@@ -5,7 +5,7 @@ $bin = (Resolve-Path -LiteralPath $GameBin).ProviderPath
 if (-not (Test-Path -LiteralPath (Join-Path $bin 'SnowRunner.exe'))) { throw "SnowRunner.exe not found in $bin" }
 if (Get-Process SnowRunner -ErrorAction SilentlyContinue) { throw 'Close SnowRunner before installing or removing the mod.' }
 if (-not $Uninstall -and (Get-Process SnowRunnerCruiseControl -ErrorAction SilentlyContinue)) { throw 'Exit the old tray utility before installing the ASI mod.' }
-$package = Join-Path $PSScriptRoot 'dist\native'
+$package = Join-Path $PSScriptRoot 'dist'
 $manifestPath = Join-Path $bin 'SnowRunnerAutopilot.install.json'
 $previous = @{}
 if (Test-Path -LiteralPath $manifestPath) {

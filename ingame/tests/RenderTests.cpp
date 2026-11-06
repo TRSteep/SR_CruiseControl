@@ -1,7 +1,7 @@
 // Exercise the actual Present and ResizeBuffers hooks using an offscreen DX11
 // swap chain. Images come from the test's GPU buffer, not the user's desktop.
 #define AUTOPILOT_RENDER_TEST
-#include "Autopilot.cpp"
+#include "../src/Autopilot.cpp"
 #include <vector>
 #include <stdexcept>
 
@@ -48,7 +48,7 @@ static int capture(IDXGISwapChain* chain, const wchar_t* filename) {
 
 int main() {
     module = GetModuleHandleW(nullptr);
-    directory = L"native\\build\\";
+    directory = L"build\\";
     iniPath = directory + L"RenderTest.ini";
     require(installRenderHooks(), "Install actual DX11 hooks");
     WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW; wc.hInstance = module; wc.lpszClassName = L"AutopilotOffscreenTest";

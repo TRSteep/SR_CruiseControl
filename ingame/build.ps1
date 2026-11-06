@@ -2,8 +2,8 @@ param([string]$Toolchain = 'C:\msys64\ucrt64\bin', [switch]$RunRenderTests)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = $PSScriptRoot
-$out = Join-Path $root 'dist\native'
-$obj = Join-Path $root 'native\build'
+$out = Join-Path $root 'dist'
+$obj = Join-Path $root 'build'
 $imgui = Join-Path $root 'vendor\imgui-1.91.6'
 $minhook = Join-Path $root 'vendor\minhook-1.3.4'
 $cxx = Join-Path $Toolchain 'g++.exe'
@@ -22,7 +22,7 @@ try {
         $objects += $target
     }
     $sources = @(
-        (Join-Path $root 'native\Autopilot.cpp'),
+        (Join-Path $root 'src\Autopilot.cpp'),
         (Join-Path $imgui 'imgui.cpp'),
         (Join-Path $imgui 'imgui_draw.cpp'),
         (Join-Path $imgui 'imgui_tables.cpp'),
@@ -45,14 +45,14 @@ try {
         $cppObjects $objects -o (Join-Path $out 'SnowRunnerAutopilot.asi') `
         -ld3d11 -ldxgi -ld3dcompiler -ldwmapi -lgdi32 -limm32 -luser32
     if ($LASTEXITCODE -ne 0) { throw 'Native ASI compilation failed.' }
-    & $cxx -std=c++17 -O2 -Wall -Wextra -Werror -static -o (Join-Path $obj 'StateTests.exe') (Join-Path $root 'native\StateTests.cpp')
+    & $cxx -std=c++17 -O2 -Wall -Wextra -Werror -static -o (Join-Path $obj 'StateTests.exe') (Join-Path $root 'tests\StateTests.cpp')
     if ($LASTEXITCODE -ne 0) { throw 'Native state tests compilation failed.' }
     & (Join-Path $obj 'StateTests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Native state tests failed.' }
     if ($RunRenderTests) {
         $renderObjects = @($cppObjects | Where-Object { [IO.Path]::GetFileName($_) -ne 'Autopilot.o' })
         & $cxx -std=c++17 -O2 -Wall -Wextra -Wno-unused-function -static -pthread -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS `
-            "-I$imgui" "-I$minhook\include" (Join-Path $root 'native\RenderTests.cpp') $renderObjects $objects `
+            "-I$imgui" "-I$minhook\include" (Join-Path $root 'tests\RenderTests.cpp') $renderObjects $objects `
             -o (Join-Path $obj 'RenderTests.exe') -ld3d11 -ldxgi -ld3dcompiler -ldwmapi -lgdi32 -limm32 -luser32
         if ($LASTEXITCODE -ne 0) { throw 'Render test compilation failed.' }
         Push-Location $root
@@ -63,8 +63,8 @@ try {
     if (-not (Test-Path -LiteralPath $loader)) { throw 'x64 ASI Loader is missing from vendor.' }
     Copy-Item -LiteralPath $loader -Destination $out
     $config = Join-Path $out 'SnowRunnerAutopilot.ini'
-    if (-not (Test-Path -LiteralPath $config)) { Copy-Item -LiteralPath (Join-Path $root 'native\SnowRunnerAutopilot.ini') -Destination $out }
-    Copy-Item -LiteralPath (Join-Path $root 'native\README.md') -Destination $out
+    if (-not (Test-Path -LiteralPath $config)) { Copy-Item -LiteralPath (Join-Path $root 'SnowRunnerAutopilot.ini') -Destination $out }
+    Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination $out
     $licenses = Join-Path $out 'licenses'
     New-Item -ItemType Directory -Path $licenses -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $imgui 'LICENSE.txt') -Destination (Join-Path $licenses 'ImGui.txt')

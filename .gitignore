@@ -1,7 +1,9 @@
-/dist/
-/native/build/
-/vendor/*.zip
-/vendor/asi-release.json
+/standalone/dist/
+/standalone/build/
+/ingame/dist/
+/ingame/build/
+/ingame/vendor/*.zip
+/ingame/vendor/asi-release.json
 
 *.o
 *.obj

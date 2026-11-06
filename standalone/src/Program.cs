@@ -48,6 +48,9 @@ namespace SnowRunnerCruise
         private readonly Keys toggleKey;
         private readonly KeyboardPolicy keyboard;
         private readonly NotifyIcon tray;
+        private readonly Icon idleIcon = LoadIcon("Off");
+        private readonly Icon activeIcon = LoadIcon("On");
+        private readonly Icon errorIcon = LoadIcon("Error");
         private readonly ToolStripMenuItem status;
         private readonly System.Windows.Forms.Timer timer;
         private IntPtr hook;
@@ -67,7 +70,7 @@ namespace SnowRunnerCruise
             menu.Items.Add(status);
             menu.Items.Add("Отключить круиз", null, delegate { cruise.Cancel(); UpdateStatus(); });
             menu.Items.Add("Выход", null, delegate { ExitThread(); });
-            tray = new NotifyIcon { Icon = SystemIcons.Application, ContextMenuStrip = menu, Visible = true };
+            tray = new NotifyIcon { Icon = idleIcon, ContextMenuStrip = menu, Visible = true };
             timer = new System.Windows.Forms.Timer { Interval = 25 };
             timer.Tick += delegate
             {
@@ -81,6 +84,15 @@ namespace SnowRunnerCruise
             UpdateStatus();
             tray.ShowBalloonTip(3500, "SnowRunner Cruise Control",
                 toggleKey + " — включить/выключить; W, S, N — отключить. Работает только в окне игры.", ToolTipIcon.Info);
+        }
+
+        private static Icon LoadIcon(string state)
+        {
+            using (Stream stream = typeof(CruiseApp).Assembly.GetManifestResourceStream("SnowRunnerCruise.Icons." + state + ".ico"))
+            {
+                if (stream == null) throw new InvalidDataException("Missing embedded application icon: " + state);
+                using (Icon icon = new Icon(stream, 32, 32)) return (Icon)icon.Clone();
+            }
         }
 
         private static Keys ReadToggleKey()
@@ -145,7 +157,7 @@ namespace SnowRunnerCruise
             lastStatus = value;
             status.Text = value;
             tray.Text = value;
-            tray.Icon = cruise.Active ? SystemIcons.Information : SystemIcons.Application;
+            tray.Icon = cruise.InputFailed ? errorIcon : cruise.Active ? activeIcon : idleIcon;
         }
 
         private void OnApplicationExit(object sender, EventArgs e) { cruise.Cancel(); }
@@ -163,6 +175,9 @@ namespace SnowRunnerCruise
                 Application.ApplicationExit -= OnApplicationExit;
                 Microsoft.Win32.SystemEvents.SessionEnding -= OnSessionEnding;
                 if (tray != null) { tray.Visible = false; tray.ContextMenuStrip.Dispose(); tray.Dispose(); }
+                idleIcon.Dispose();
+                activeIcon.Dispose();
+                errorIcon.Dispose();
                 if (timer != null) timer.Dispose();
             }
             base.Dispose(disposing);

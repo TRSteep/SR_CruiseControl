@@ -1,4 +1,4 @@
-#include "CruiseState.h"
+#include "../src/CruiseState.h"
 #include <vector>
 #include <stdexcept>
 #include <cstdio>
