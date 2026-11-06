@@ -1,4 +1,4 @@
-param([string]$GameBin = 'D:\Games\SnowRunner\en_us\Sources\Bin', [switch]$Uninstall, [ValidateRange(-1,2000)][int]$HudBottom = -1)
+param([string]$GameBin = 'D:\Games\SnowRunner\en_us\Sources\Bin', [switch]$Uninstall, [switch]$ResetHudLayout)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $bin = (Resolve-Path -LiteralPath $GameBin).ProviderPath
@@ -53,15 +53,14 @@ foreach ($name in $names) {
     $installed[$name] = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash
     Write-Output "Installed: $target"
 }
-if ($HudBottom -ge 0) {
+if ($ResetHudLayout) {
     $settingsPath = Join-Path $bin 'SnowRunnerAutopilot.ini'
     $settings = Get-Content -LiteralPath $settingsPath -Raw
-    if ($settings -match '(?m)^Bottom=\d+') {
-        $settings = $settings -replace '(?m)^Bottom=\d+', "Bottom=$HudBottom"
-    } else { throw 'HUD Bottom setting was not found; settings preserved.' }
+    $settings = $settings -replace '(?m)^(Right|Bottom|OffsetX|OffsetY|ScalePercent)=[^\r\n]*\r?\n?', ''
+    $settings = $settings -replace '(?m)^\[HUD\]', "[HUD]`r`nOffsetX=0`r`nOffsetY=0`r`nScalePercent=100"
     Set-Content -LiteralPath $settingsPath -Value $settings -Encoding utf8 -NoNewline
     $installed['SnowRunnerAutopilot.ini'] = (Get-FileHash -LiteralPath $settingsPath -Algorithm SHA256).Hash
-    Write-Output "HUD raised: Bottom=$HudBottom"
+    Write-Output 'HUD layout reset: native row anchor, default spacing and scale.'
 }
 @{ Version = 1; Files = $installed } | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding utf8
 Write-Output 'Native mod installed. Start SnowRunner normally; do not run the old EXE utility.'

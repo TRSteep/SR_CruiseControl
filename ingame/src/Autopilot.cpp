@@ -8,11 +8,13 @@
 #include <string>
 #include <algorithm>
 #include <cstdio>
+#include <vector>
 #include "MinHook.h"
 #include "imgui.h"
 #include "backends/imgui_impl_dx11.h"
 #include "backends/imgui_impl_win32.h"
 #include "CruiseState.h"
+#include "DrivingHud.h"
 
 namespace {
 HMODULE module;
@@ -22,13 +24,62 @@ std::atomic<int> displayState{0}; // 0 off, 1 on, 2 input error
 std::atomic<bool> ownsInput{false};
 std::atomic<bool> stopping{false};
 unsigned toggleKey = VK_F6;
-float rightMargin = 40, bottomMargin = 430, hudScale = 1;
+float offsetX = 0, offsetY = 0, hudScale = 1;
 bool hudVisible = true;
 HHOOK keyboardHook;
 autopilot::KeyboardPolicy* keyboard;
 constexpr ULONG_PTR throttleTag = 0x53524150;
 std::atomic<bool> manualRequested{false}, cancelRequested{false};
 std::atomic<WNDPROC> previousWindowProc{nullptr};
+std::mutex hudAnchorMutex, hudSampleMutex;
+autopilot::HudAnchor hudAnchor;
+ULONGLONG hudAnchorTime = 0;
+std::atomic<unsigned> hudGeneration{0};
+HANDLE hudSampleEvent;
+struct HudSample {
+    std::vector<unsigned char> pixels;
+    float left = 0, top = 0, scale = 1;
+    unsigned generation = 0;
+    ULONGLONG stamp = 0;
+};
+HudSample pendingHudSample;
+void log(const char* message);
+
+autopilot::HudAnchor currentHudAnchor() {
+    std::lock_guard<std::mutex> lock(hudAnchorMutex);
+    autopilot::HudAnchor result = hudAnchor;
+    result.visible = autopilot::drivingHudAvailable(result.visible, hudAnchorTime, GetTickCount64());
+    return result;
+}
+
+DWORD WINAPI observeDrivingHud(void*) {
+    autopilot::DrivingHudDetector detector;
+    bool wasVisible = false;
+    while (!stopping.load()) {
+        if (WaitForSingleObject(hudSampleEvent, 500) != WAIT_OBJECT_0) continue;
+        HudSample sample;
+        { std::lock_guard<std::mutex> lock(hudSampleMutex); std::swap(sample, pendingHudSample); }
+        if (sample.pixels.empty() || sample.generation != hudGeneration.load()) continue;
+        auto match = detector.find(sample.pixels.data());
+        match.x = sample.left + match.x * sample.scale;
+        match.y = sample.top + match.y * sample.scale;
+        match.scale *= sample.scale;
+        if (sample.generation != hudGeneration.load()) continue;
+        {
+            std::lock_guard<std::mutex> lock(hudAnchorMutex);
+            if (sample.generation != hudGeneration.load()) continue;
+            hudAnchor = match; hudAnchorTime = sample.stamp;
+        }
+        // Log transitions only; never save gameplay frames or arbitrary key input.
+        if (wasVisible != match.visible) {
+            char message[128];
+            std::snprintf(message, sizeof(message), "Native driving HUD %s (confidence %.3f).", match.visible ? "visible" : "hidden", match.confidence);
+            log(message);
+            wasVisible = match.visible;
+        }
+    }
+    return 0;
+}
 
 void log(const char* message) {
     std::lock_guard<std::mutex> lock(logMutex);
@@ -88,22 +139,23 @@ LRESULT CALLBACK gameWindowProc(HWND window, UINT message, WPARAM vk, LPARAM dat
     // The low-level hook must forward F6 so Windows updates its async state.
     // Swallow only the game's window messages, after that update has happened.
     if ((message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP)
-        && vk == toggleKey && !modifiersDown()) return 0;
+        && vk == toggleKey && !modifiersDown() && currentHudAnchor().visible) return 0;
     const WNDPROC original = previousWindowProc.load();
     return original ? CallWindowProcW(original, window, message, vk, data) : DefWindowProcW(window, message, vk, data);
 }
 
 void pollInput(autopilot::ToggleEdge& toggle) {
     const bool focused = gameFocused();
+    const bool driving = currentHudAnchor().visible;
     const bool brake = isDown(MapVirtualKeyW(0x1f, MAPVK_VSC_TO_VK_EX));
     if (manualRequested.exchange(false)) cruise.manualThrottle();
-    if (cancelRequested.exchange(false) || !focused || brake || isDown(MapVirtualKeyW(0x31, MAPVK_VSC_TO_VK_EX)) ||
+    if (cancelRequested.exchange(false) || !focused || !driving || brake || isDown(MapVirtualKeyW(0x31, MAPVK_VSC_TO_VK_EX)) ||
         isDown(VK_ESCAPE) || isDown(VK_RETURN) || isDown(VK_F1) || isDown(VK_F4)) {
         if (cruise.active) log("Autopilot cancelled by brake/engine/menu/focus.");
         cruise.cancel();
     }
     const bool modifiers = modifiersDown();
-    if (autopilot::pollToggle(cruise, toggle, isDown(toggleKey), focused, brake, modifiers)) {
+    if (autopilot::pollToggle(cruise, toggle, isDown(toggleKey), focused && driving, brake, modifiers)) {
         log(cruise.active ? "F-key detected: autopilot ON." : cruise.inputFailed ? "F-key detected: input failed." :
             modifiers || brake || cruise.ownsThrottle ? "F-key detected: activation blocked by brake/modifiers/pending release." : "F-key detected: autopilot OFF.");
     }
@@ -114,8 +166,8 @@ void pollInput(autopilot::ToggleEdge& toggle) {
 void loadConfig() {
     toggleKey = GetPrivateProfileIntW(L"Autopilot", L"ToggleKey", VK_F6, iniPath.c_str());
     if (toggleKey < VK_F2 || toggleKey > VK_F12 || toggleKey == VK_F4) toggleKey = VK_F6;
-    rightMargin = static_cast<float>(std::min(3000u, GetPrivateProfileIntW(L"HUD", L"Right", 40, iniPath.c_str())));
-    bottomMargin = static_cast<float>(std::min(2000u, GetPrivateProfileIntW(L"HUD", L"Bottom", 430, iniPath.c_str())));
+    offsetX = static_cast<float>(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"OffsetX", 0, iniPath.c_str())), -1000, 1000));
+    offsetY = static_cast<float>(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"OffsetY", 0, iniPath.c_str())), -1000, 1000));
     hudScale = std::clamp(GetPrivateProfileIntW(L"HUD", L"ScalePercent", 100, iniPath.c_str()) / 100.f, .5f, 2.f);
     hudVisible = GetPrivateProfileIntW(L"HUD", L"Visible", 1, iniPath.c_str()) != 0;
 }
@@ -124,8 +176,8 @@ void saveHud() {
         const std::wstring text = std::to_wstring(value);
         WritePrivateProfileStringW(L"HUD", key, text.c_str(), iniPath.c_str());
     };
-    write(L"Right", static_cast<int>(rightMargin));
-    write(L"Bottom", static_cast<int>(bottomMargin));
+    write(L"OffsetX", static_cast<int>(offsetX));
+    write(L"OffsetY", static_cast<int>(offsetY));
     write(L"ScalePercent", static_cast<int>(hudScale * 100 + .5f));
     write(L"Visible", hudVisible ? 1 : 0);
 }
@@ -141,6 +193,85 @@ ID3D11DeviceContext* context;
 ID3D11RenderTargetView* renderTarget;
 ImGuiContext* imgui;
 UINT renderWidth, renderHeight;
+ID3D11Texture2D* hudReadback[2]{};
+bool hudReadbackPending[2]{};
+ULONGLONG hudReadbackTime[2]{}, lastHudCapture = 0;
+int hudReadbackWidth = 0, hudReadbackHeight = 0;
+
+void releaseHudReadback() {
+    for (int i = 0; i < 2; ++i) {
+        if (hudReadback[i]) { hudReadback[i]->Release(); hudReadback[i] = nullptr; }
+        hudReadbackPending[i] = false;
+    }
+    hudReadbackWidth = hudReadbackHeight = 0;
+    ++hudGeneration;
+    { std::lock_guard<std::mutex> lock(hudAnchorMutex); hudAnchor = {}; hudAnchorTime = 0; }
+}
+
+void captureDrivingHud(IDXGISwapChain* chain) {
+    if (!hudSampleEvent || renderWidth < 640 || renderHeight < 360) return;
+    const float scale = renderHeight / 1080.f;
+    const float left = renderWidth - autopilot::DrivingHudDetector::cropRight * scale;
+    const float top = renderHeight - autopilot::DrivingHudDetector::cropBottom * scale;
+    const UINT x = static_cast<UINT>(std::max(0.f, std::floor(left)));
+    const UINT y = static_cast<UINT>(std::max(0.f, std::floor(top)));
+    const UINT width = static_cast<UINT>(std::ceil(autopilot::DrivingHudDetector::cropWidth * scale)) + 1;
+    const UINT height = static_cast<UINT>(std::ceil(autopilot::DrivingHudDetector::cropHeight * scale)) + 1;
+    if (x + width > renderWidth || y + height > renderHeight) return;
+    ID3D11Texture2D* buffer = nullptr;
+    if (FAILED(chain->GetBuffer(0, IID_PPV_ARGS(&buffer)))) return;
+    D3D11_TEXTURE2D_DESC desc{}; buffer->GetDesc(&desc);
+    const bool bgra = desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM || desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+    const bool rgba = desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM || desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    if ((!bgra && !rgba) || desc.SampleDesc.Count != 1) { buffer->Release(); return; }
+    if (hudReadbackWidth != static_cast<int>(width) || hudReadbackHeight != static_cast<int>(height)) {
+        releaseHudReadback();
+        desc.Width = width; desc.Height = height; desc.MipLevels = 1; desc.ArraySize = 1;
+        desc.Usage = D3D11_USAGE_STAGING; desc.BindFlags = 0;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ; desc.MiscFlags = 0;
+        for (auto& texture : hudReadback) {
+            if (FAILED(device->CreateTexture2D(&desc, nullptr, &texture))) { releaseHudReadback(); buffer->Release(); return; }
+        }
+        hudReadbackWidth = width; hudReadbackHeight = height;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (!hudReadbackPending[i]) continue;
+        D3D11_MAPPED_SUBRESOURCE map{};
+        // Never wait for GPU readback in Present. Busy frames are retried later.
+        if (FAILED(context->Map(hudReadback[i], 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &map))) continue;
+        HudSample sample;
+        sample.pixels.resize(autopilot::DrivingHudDetector::cropWidth * autopilot::DrivingHudDetector::cropHeight);
+        sample.left = left; sample.top = top; sample.scale = scale;
+        sample.generation = hudGeneration.load(); sample.stamp = hudReadbackTime[i];
+        auto gray = [&](int px, int py) {
+            px = std::clamp(px, 0, static_cast<int>(width) - 1); py = std::clamp(py, 0, static_cast<int>(height) - 1);
+            const auto* pixel = static_cast<const unsigned char*>(map.pData) + py * map.RowPitch + px * 4;
+            return (77 * pixel[bgra ? 2 : 0] + 150 * pixel[1] + 29 * pixel[bgra ? 0 : 2]) / 256.f;
+        };
+        for (int cy = 0; cy < autopilot::DrivingHudDetector::cropHeight; ++cy)
+            for (int cx = 0; cx < autopilot::DrivingHudDetector::cropWidth; ++cx) {
+                const float sx = left - x + (cx + .5f) * scale - .5f;
+                const float sy = top - y + (cy + .5f) * scale - .5f;
+                const int ix = static_cast<int>(std::floor(sx)), iy = static_cast<int>(std::floor(sy));
+                const float fx = sx - ix, fy = sy - iy;
+                sample.pixels[cy * autopilot::DrivingHudDetector::cropWidth + cx] = static_cast<unsigned char>(
+                    (gray(ix, iy) * (1 - fx) + gray(ix + 1, iy) * fx) * (1 - fy) +
+                    (gray(ix, iy + 1) * (1 - fx) + gray(ix + 1, iy + 1) * fx) * fy);
+            }
+        context->Unmap(hudReadback[i], 0); hudReadbackPending[i] = false;
+        { std::lock_guard<std::mutex> lock(hudSampleMutex); std::swap(pendingHudSample, sample); }
+        SetEvent(hudSampleEvent);
+    }
+    if (GetTickCount64() - lastHudCapture >= 120) {
+        for (int i = 0; i < 2; ++i) if (!hudReadbackPending[i]) {
+            const D3D11_BOX box{x, y, 0, x + width, y + height, 1};
+            context->CopySubresourceRegion(hudReadback[i], 0, 0, 0, 0, buffer, 0, &box);
+            hudReadbackTime[i] = lastHudCapture = GetTickCount64(); hudReadbackPending[i] = true;
+            break;
+        }
+    }
+    buffer->Release();
+}
 
 bool makeTarget(IDXGISwapChain* chain) {
     ID3D11Texture2D* buffer = nullptr;
@@ -164,7 +295,9 @@ bool initializeRenderer(IDXGISwapChain* chain) {
     io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange;
     wchar_t windows[MAX_PATH]{};
     GetWindowsDirectoryW(windows, MAX_PATH);
-    std::wstring fontPath = std::wstring(windows) + L"\\Fonts\\segoeui.ttf";
+    std::wstring fontPath = directory + L"TTLakesCompressed-Medium.ttf";
+    if (GetFileAttributesW(fontPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+        fontPath = std::wstring(windows) + L"\\Fonts\\segoeui.ttf";
     const int bytes = WideCharToMultiByte(CP_UTF8, 0, fontPath.c_str(), -1, nullptr, 0, nullptr, nullptr);
     std::string utf8(bytes, '\0');
     WideCharToMultiByte(CP_UTF8, 0, fontPath.c_str(), -1, &utf8[0], bytes, nullptr, nullptr);
@@ -202,30 +335,39 @@ void renderHud() {
     const bool up = pressed(VK_UP), down = pressed(VK_DOWN);
     const bool larger = pressed(VK_PRIOR), smaller = pressed(VK_NEXT), hide = pressed('H');
     if (isDown(VK_CONTROL) && isDown(VK_MENU)) {
-        rightMargin = std::clamp(rightMargin + (left ? 10.f : 0) - (right ? 10.f : 0), 0.f, 3000.f);
-        bottomMargin = std::clamp(bottomMargin + (up ? 10.f : 0) - (down ? 10.f : 0), 0.f, 2000.f);
+        offsetX = std::clamp(offsetX - (left ? 2.f : 0) + (right ? 2.f : 0), -1000.f, 1000.f);
+        offsetY = std::clamp(offsetY - (up ? 2.f : 0) + (down ? 2.f : 0), -1000.f, 1000.f);
         hudScale = std::clamp(hudScale + (larger ? .1f : 0) - (smaller ? .1f : 0), .5f, 2.f);
         if (hide) hudVisible = !hudVisible;
         if (left || right || up || down || larger || smaller || hide) saveHud();
     }
-    if (!hudVisible) return;
+    const auto anchor = currentHudAnchor();
+    if (!hudVisible || !anchor.visible) return;
     const ImGuiIO& io = ImGui::GetIO();
     const float scale = std::clamp(io.DisplaySize.y / 1080.f, .5f, 3.f);
-    const float textScale = scale * hudScale;
-    const float width = 256 * textScale, height = 65 * textScale;
-    const float x = std::clamp(io.DisplaySize.x - width - rightMargin * scale, 0.f, std::max(0.f, io.DisplaySize.x - width));
-    const float y = std::clamp(io.DisplaySize.y - height - bottomMargin * scale, 0.f, std::max(0.f, io.DisplaySize.y - height));
-    const ImVec2 pos(x, y);
+    const float textScale = anchor.scale * hudScale;
+    const float width = 202 * textScale, height = 40 * textScale;
+    const float x = std::clamp(anchor.x - 178 * anchor.scale + offsetX * scale, 0.f, std::max(0.f, io.DisplaySize.x - 235 * textScale));
+    const float y = std::clamp(anchor.y - (20 + 48) * anchor.scale + offsetY * scale, 0.f, std::max(0.f, io.DisplaySize.y - height));
     ImDrawList* draw = ImGui::GetForegroundDrawList();
-    draw->AddRectFilled(pos, ImVec2(x + width, y + height), IM_COL32(12, 17, 21, 190), 4 * textScale);
+    const ImVec2 plate[] = {{x + 4 * textScale,y}, {x + width,y + 2 * textScale},
+        {x + width,y + height}, {x + 3 * textScale,y + height - 2 * textScale},
+        {x,y + height - 8 * textScale}, {x + 2 * textScale,y + 7 * textScale}};
+    draw->AddConvexPolyFilled(plate, 6, IM_COL32(18, 22, 23, 145));
     const int state = displayState.load();
-    const ImU32 color = state == 2 ? IM_COL32(255, 125, 90, 255) : state == 1 ? IM_COL32(128, 225, 151, 255) : IM_COL32(220, 224, 226, 255);
-    draw->AddRectFilled(pos, ImVec2(x + 3 * textScale, y + height), color);
-    char title[96];
-    std::snprintf(title, sizeof(title), "АВТОПИЛОТ   [F%u]", toggleKey - VK_F1 + 1);
-    draw->AddText(ImGui::GetFont(), 20 * textScale, ImVec2(x + 13 * textScale, y + 8 * textScale), IM_COL32_WHITE, title);
-    draw->AddText(ImGui::GetFont(), 17 * textScale, ImVec2(x + 13 * textScale, y + 35 * textScale), color,
-        state == 2 ? "ОШИБКА ВВОДА" : state == 1 ? "ВКЛЮЧЁН" : "ВЫКЛЮЧЕН");
+    const ImU32 color = state == 2 ? IM_COL32(239, 116, 78, 235) : state == 1 ? IM_COL32(213, 224, 122, 235) : IM_COL32(210, 213, 209, 200);
+    draw->AddText(ImGui::GetFont(), (state == 2 ? 17 : 20) * textScale,
+        ImVec2(x + 19 * textScale, y + 8 * textScale), color, state == 2 ? "ОШИБКА ВВОДА" : "АВТОПИЛОТ");
+    const ImVec2 center(x + 178 * textScale, y + 20 * textScale);
+    draw->PathArcTo(center, 11 * textScale, 2.35f, 7.08f, 22); draw->PathStroke(color, 0, 2 * textScale);
+    draw->AddLine(center, ImVec2(center.x + 6 * textScale, center.y - 6 * textScale), color, 2 * textScale);
+    draw->AddCircleFilled(center, 2 * textScale, color);
+    const ImVec2 keyPos(x + 207 * textScale, y + 8 * textScale);
+    draw->AddRectFilled(keyPos, ImVec2(keyPos.x + 24 * textScale, keyPos.y + 24 * textScale), IM_COL32(216, 222, 222, 200), 2 * textScale);
+    char keyLabel[8]; std::snprintf(keyLabel, sizeof(keyLabel), "F%u", toggleKey - VK_F1 + 1);
+    const ImVec2 keySize = ImGui::GetFont()->CalcTextSizeA(16 * textScale, FLT_MAX, 0, keyLabel);
+    draw->AddText(ImGui::GetFont(), 16 * textScale, ImVec2(keyPos.x + (24 * textScale - keySize.x) / 2,
+        keyPos.y + (24 * textScale - keySize.y) / 2), IM_COL32(43, 55, 59, 255), keyLabel);
 }
 
 HRESULT STDMETHODCALLTYPE presentHook(IDXGISwapChain* chain, UINT sync, UINT flags) {
@@ -234,6 +376,7 @@ HRESULT STDMETHODCALLTYPE presentHook(IDXGISwapChain* chain, UINT sync, UINT fla
         ImGuiContext* previous = ImGui::GetCurrentContext();
         if ((!imgui && initializeRenderer(chain)) || (imgui && chain == selectedChain)) {
             ImGui::SetCurrentContext(imgui);
+            captureDrivingHud(chain); // Read the game's frame before our own row is drawn.
             if ((renderTarget || makeTarget(chain)) && gameFocused()) {
                 ImGui_ImplDX11_NewFrame();
                 ImGui_ImplWin32_NewFrame();
@@ -262,6 +405,7 @@ HRESULT STDMETHODCALLTYPE resizeHook(IDXGISwapChain* chain, UINT count, UINT wid
     if (chain == selectedChain && imgui) {
         ImGui::SetCurrentContext(imgui);
         ImGui_ImplDX11_InvalidateDeviceObjects();
+        releaseHudReadback();
         if (renderTarget) { renderTarget->Release(); renderTarget = nullptr; }
     }
     const HRESULT result = originalResize(chain, count, width, height, format, flags);
@@ -312,8 +456,13 @@ DWORD WINAPI run(void*) {
     directory = path;
     directory.resize(directory.find_last_of(L"\\/") + 1);
     iniPath = directory + L"SnowRunnerAutopilot.ini";
-    log("Native autopilot v2 starting (x64, D3D11, async F-key polling).");
+    log("Native autopilot v3 starting (native driving HUD tracking).");
     loadConfig();
+    hudSampleEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!hudSampleEvent) { log("HUD observer event failed; input stays disabled."); return 1; }
+    HANDLE observer = CreateThread(nullptr, 0, observeDrivingHud, nullptr, 0, nullptr);
+    if (!observer) { log("HUD observer thread failed; input stays disabled."); return 1; }
+    CloseHandle(observer);
     if (!installRenderHooks()) return 1;
     // Activation is polled independently of the global keyboard hook. A game
     // startup stall can cause Windows to silently remove a low-level hook.
@@ -351,6 +500,7 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
         if (thread) CloseHandle(thread);
     } else if (reason == DLL_PROCESS_DETACH) {
         stopping = true;
+        if (hudSampleEvent) SetEvent(hudSampleEvent);
         // Only SendInput here, no thread joins, UI, locks or graphics cleanup.
         if (ownsInput.load()) sendThrottle(false);
     }

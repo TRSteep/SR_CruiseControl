@@ -49,6 +49,10 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Native state tests compilation failed.' }
     & (Join-Path $obj 'StateTests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Native state tests failed.' }
+    & $cxx -std=c++17 -O2 -Wall -Wextra -Werror -static -o (Join-Path $obj 'HudDetectorTests.exe') (Join-Path $root 'tests\HudDetectorTests.cpp')
+    if ($LASTEXITCODE -ne 0) { throw 'HUD detector tests compilation failed.' }
+    & (Join-Path $obj 'HudDetectorTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'HUD detector tests failed.' }
     if ($RunRenderTests) {
         $renderObjects = @($cppObjects | Where-Object { [IO.Path]::GetFileName($_) -ne 'Autopilot.o' })
         & $cxx -std=c++17 -O2 -Wall -Wextra -Wno-unused-function -static -pthread -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS `
@@ -58,6 +62,13 @@ try {
         Push-Location $root
         try { & (Join-Path $obj 'RenderTests.exe') } finally { Pop-Location }
         if ($LASTEXITCODE -ne 0) { throw 'DX11 render tests failed.' }
+        & $cxx -std=c++17 -O2 -Wall -Wextra -Wno-unused-function -static -pthread -DIMGUI_DISABLE_OBSOLETE_FUNCTIONS `
+            "-I$imgui" "-I$minhook\include" (Join-Path $root 'tests\GpuObserverTests.cpp') $renderObjects $objects `
+            -o (Join-Path $obj 'GpuObserverTests.exe') -ld3d11 -ldxgi -ld3dcompiler -ldwmapi -lgdi32 -limm32 -luser32
+        if ($LASTEXITCODE -ne 0) { throw 'GPU observer test compilation failed.' }
+        Push-Location $root
+        try { & (Join-Path $obj 'GpuObserverTests.exe') } finally { Pop-Location }
+        if ($LASTEXITCODE -ne 0) { throw 'GPU observer integration tests failed.' }
     }
     $loader = Join-Path $root 'vendor\asi-loader-v10.0.2\dinput8.dll'
     if (-not (Test-Path -LiteralPath $loader)) { throw 'x64 ASI Loader is missing from vendor.' }
