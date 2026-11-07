@@ -15,6 +15,11 @@ bool fakeAttach(void* iface, void* parent, probe::ObservedValue* result, const c
     check(!std::strcmp(symbol,"hudBtnBg") && !std::strcmp(instance,"test")); check(depth == -1 && init == nullptr);
     result->type = 0x4a; result->interfacePointer = 0x1234; result->object = 0x8765; ++attachCalls; return true;
 }
+bool fakeGet(void* iface,void* parent,const char* member,probe::ObservedValue* out,bool display) {
+    check(iface==reinterpret_cast<void*>(0x1234) && parent==reinterpret_cast<void*>(0x5678));
+    check(!std::strcmp(member,"brakeBtn") && display);
+    out->type=0x4a; out->object=0x4321; return true;
+}
 int main() {
     char name[128]{};
     probe::textAt(reinterpret_cast<const char*>(1),name); check(!*name);
@@ -33,5 +38,8 @@ int main() {
     check(probe::attachHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),&output,"hudBtnBg","test",-1,nullptr));
     check(attachCalls == 1 && probe::events[2].success && probe::events[2].object == output.object);
     auto copy = output; probe::snapshot(probe::events[2],&output); check(!std::memcmp(&copy,&output,sizeof(output)));
+    probe::originalGet=fakeGet;
+    check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
+    check(probe::events[3].kind==4 && probe::events[3].success && probe::events[3].object==0x4321);
     std::printf("PASS: %u probe memory/ABI/forwarding checks\n",checks);
 }

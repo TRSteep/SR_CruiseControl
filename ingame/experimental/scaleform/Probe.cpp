@@ -13,7 +13,7 @@
 namespace probe {
 // Deliberately separate from the released autopilot. These offsets describe
 // only the EXE whose complete SHA256 is checked before any hook is installed.
-constexpr uintptr_t createRva = 0x10243a0, attachRva = 0x1b61880;
+constexpr uintptr_t createRva = 0x10243a0, attachRva = 0x1b61880, getRva = 0x1b5d4b0;
 constexpr unsigned char createPrefix[] = {0x48,0x89,0x5c,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x55,0x41,0x54};
 constexpr unsigned char attachPrefix[] = {0x4c,0x8b,0xdc,0x4d,0x89,0x4b,0x20,0x4d,0x89,0x43,0x18,0x55};
 constexpr char expectedHash[] = "a3cb442ec138eb2eb7e335e5c80e376766550740e49e233ac9eace035e182285";
@@ -27,6 +27,7 @@ using Create = uintptr_t(*)(void*, const void*);
 using Attach = bool(*)(void*, void*, ObservedValue*, const char*, const char*, int, const void*);
 Create originalCreate = nullptr;
 Attach originalAttach = nullptr;
+nativeui::Get originalGet = nullptr;
 nativeui::Api ui{};
 bool enableTestRow = false;
 
@@ -88,15 +89,9 @@ uintptr_t createHook(void* owner, const void* linkage) {
     publish(e);
     if (!std::strcmp(e.symbol,"defaultHud")) {
         Event test{}; test.kind = 3; test.thread = GetCurrentThreadId();
-        std::strcpy(test.symbol,"TEST-disabled");
-        if (enableTestRow) {
-            ObservedValue hud;
-            if (read(reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(owner)+0x58),&hud,sizeof(hud))) {
-                const auto stage = nativeui::addTestRow(ui,hud);
-                test.type = static_cast<unsigned>(stage); test.success = stage == nativeui::Stage::Created;
-                std::strcpy(test.symbol,"TEST-result");
-            }
-        }
+        // Creation can run on a loading worker before the UI is ready.
+        // Never enter the VM here. First observe the game's own field reads.
+        std::strcpy(test.symbol,enableTestRow ? "TEST-deferred" : "TEST-disabled");
         publish(test);
     }
     return result;
@@ -109,6 +104,20 @@ bool attachHook(void* interfacePointer, void* parent, ObservedValue* result,
     textAt(symbol, e.symbol); textAt(instance, e.instance);
     const bool success = originalAttach(interfacePointer, parent, result, symbol, instance, depth, init);
     if (relevant(e.symbol)) { e.success = success; snapshot(e, result); publish(e); }
+    return success;
+}
+bool getHook(void* interfacePointer, void* parent, const char* name, ObservedValue* result, bool isDisplay) {
+    char member[128]{}; textAt(name,member);
+    const bool wanted = !std::strcmp(member,"rightHudPanelContainer") || !std::strcmp(member,"brakeBtn") ||
+        !std::strcmp(member,"wdBtn") || !std::strcmp(member,"diffBtn") || !std::strcmp(member,"gearBox");
+    Event e{};
+    if (wanted) {
+        e.kind=4; e.thread=GetCurrentThreadId(); e.owner=reinterpret_cast<uintptr_t>(interfacePointer);
+        e.parent=reinterpret_cast<uintptr_t>(parent); e.output=reinterpret_cast<uintptr_t>(result);
+        std::strcpy(e.symbol,member);
+    }
+    const bool success = originalGet(interfacePointer,parent,name,result,isDisplay);
+    if (wanted) { e.success=success; snapshot(e,result); publish(e); }
     return success;
 }
 
@@ -164,7 +173,7 @@ DWORD WINAPI run(void*) {
     enableTestRow = GetPrivateProfileIntW(L"Probe",L"EnableTestRow",0,configPath.c_str()) == 1;
     logPath += L"SnowRunnerScaleformProbe.log";
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
-    std::fprintf(log, "Scaleform diagnostic probe 2; native TEST=%u; no input writes.\n",enableTestRow); std::fflush(log);
+    std::fprintf(log, "Scaleform diagnostic probe 3; TEST request=%u (deferred); observer only, no VM calls or input writes.\n",enableTestRow); std::fflush(log);
     char hash[65]{};
     const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!hashExe(hash) || std::strcmp(hash, expectedHash) || !compatible(image) || !bindUi(image)) {
@@ -172,18 +181,21 @@ DWORD WINAPI run(void*) {
     }
     std::fprintf(log, "Verified EXE %s\n", hash);
     const auto init = MH_Initialize();
-    void* create = image + createRva; void* attach = image + attachRva;
-    MH_STATUS a = MH_UNKNOWN, b = MH_UNKNOWN, enabled = MH_UNKNOWN;
+    void* create = image + createRva; void* attach = image + attachRva; void* get = image + getRva;
+    MH_STATUS a = MH_UNKNOWN, b = MH_UNKNOWN, c = MH_UNKNOWN, enabled = MH_UNKNOWN;
     if (init == MH_OK || init == MH_ERROR_ALREADY_INITIALIZED) {
         a = MH_CreateHook(create, reinterpret_cast<void*>(createHook), reinterpret_cast<void**>(&originalCreate));
         b = MH_CreateHook(attach, reinterpret_cast<void*>(attachHook), reinterpret_cast<void**>(&originalAttach));
-        if (a == MH_OK && b == MH_OK && MH_QueueEnableHook(create) == MH_OK && MH_QueueEnableHook(attach) == MH_OK)
+        c = MH_CreateHook(get, reinterpret_cast<void*>(getHook), reinterpret_cast<void**>(&originalGet));
+        if (a == MH_OK && b == MH_OK && c == MH_OK && MH_QueueEnableHook(create) == MH_OK &&
+            MH_QueueEnableHook(attach) == MH_OK && MH_QueueEnableHook(get) == MH_OK)
             enabled = MH_ApplyQueued();
     }
-    std::fprintf(log, "Hooks init=%d create=%d attach=%d enabled=%d\n", init,a,b,enabled); std::fflush(log);
+    std::fprintf(log, "Hooks init=%d create=%d attach=%d get=%d enabled=%d\n", init,a,b,c,enabled); std::fflush(log);
     if (enabled != MH_OK) {
         if (a == MH_OK) { MH_DisableHook(create); MH_RemoveHook(create); }
         if (b == MH_OK) { MH_DisableHook(attach); MH_RemoveHook(attach); }
+        if (c == MH_OK) { MH_DisableHook(get); MH_RemoveHook(get); }
         std::fclose(log); return 1;
     }
     unsigned consumed = 0, ticks = 0;
