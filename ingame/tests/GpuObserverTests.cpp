@@ -50,17 +50,26 @@ int main(int argc, char** argv) {
     hudSampleEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     HANDLE observer = CreateThread(nullptr, 0, observeDrivingHud, nullptr, 0, nullptr);
     require(observer != nullptr, "Start actual HUD observer");
+    autopilot::HudAnchor fixedPose;
+    bool havePose = false;
     for (size_t i = 0; i < fixtures.size(); ++i) {
         const auto& fixture = fixtures[i];
-        if (i) require(SUCCEEDED(chain->ResizeBuffers(1, fixture.width, fixture.height, DXGI_FORMAT_UNKNOWN, 0)), "Reset readback between references");
+        if (i && (fixture.width != fixtures[i-1].width || fixture.height != fixtures[i-1].height))
+            require(SUCCEEDED(chain->ResizeBuffers(1, fixture.width, fixture.height, DXGI_FORMAT_UNKNOWN, 0)), "Reset readback after resolution change");
         const ULONGLONG start = GetTickCount64();
         bool completed = false;
-        for (int frame = 0; frame < 120; ++frame) {
+        for (int frame = 0; frame < 300; ++frame) {
             ID3D11Texture2D* buffer = nullptr; chain->GetBuffer(0, IID_PPV_ARGS(&buffer));
             hostContext->UpdateSubresource(buffer, 0, nullptr, fixture.rgba.data(), fixture.width * 4, 0); buffer->Release();
             chain->Present(0, 0); Sleep(16);
             std::lock_guard<std::mutex> lock(hudAnchorMutex);
-            if (hudAnchorTime >= start && hudAnchor.visible == fixture.expected) {
+            if (hudObservationTime >= start && hudAnchor.visible == fixture.expected) {
+                if (fixture.expected) {
+                    if (havePose && fixture.width == fixtures[i-1].width && fixture.height == fixtures[i-1].height)
+                        require(hudAnchor.x == fixedPose.x && hudAnchor.y == fixedPose.y && hudAnchor.scale == fixedPose.scale,
+                            "Different road-shake frames must keep exactly the same row pose");
+                    fixedPose = hudAnchor; havePose = true;
+                } else havePose = false;
                 std::printf("GPU reference %u: driving=%d, score=%.3f, anchor=(%.1f,%.1f)\n",
                     static_cast<unsigned>(i + 1), hudAnchor.visible, hudAnchor.confidence, hudAnchor.x, hudAnchor.y);
                 completed = true; break;

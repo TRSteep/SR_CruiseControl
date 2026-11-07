@@ -34,6 +34,9 @@ std::atomic<WNDPROC> previousWindowProc{nullptr};
 std::mutex hudAnchorMutex, hudSampleMutex;
 autopilot::HudAnchor hudAnchor;
 ULONGLONG hudAnchorTime = 0;
+ULONGLONG hudObservationTime = 0;
+std::atomic<bool> hudResetRequested{false};
+std::atomic<ULONGLONG> hudReacquireAfter{0};
 std::atomic<unsigned> hudGeneration{0};
 HANDLE hudSampleEvent;
 struct HudSample {
@@ -52,30 +55,52 @@ autopilot::HudAnchor currentHudAnchor() {
     return result;
 }
 
+bool hudCanActivate() {
+    std::lock_guard<std::mutex> lock(hudAnchorMutex);
+    const ULONGLONG now = GetTickCount64();
+    return hudAnchor.visible && now >= hudAnchorTime && now - hudAnchorTime <= 500;
+}
+
+void resetHudTracking(ULONGLONG cooldown = 0) {
+    ++hudGeneration;
+    if (cooldown) hudReacquireAfter = GetTickCount64() + cooldown;
+    std::lock_guard<std::mutex> lock(hudAnchorMutex);
+    hudAnchor = {}; hudAnchorTime = hudObservationTime = 0;
+}
+
+bool menuKey(unsigned vk, unsigned scan) {
+    return scan == 0x32 || vk == VK_ESCAPE || vk == VK_RETURN || vk == VK_F1 || vk == VK_F4;
+}
+
 DWORD WINAPI observeDrivingHud(void*) {
     autopilot::DrivingHudDetector detector;
+    autopilot::StableDrivingHud tracker;
+    unsigned generation = hudGeneration.load();
     bool wasVisible = false;
     while (!stopping.load()) {
         if (WaitForSingleObject(hudSampleEvent, 500) != WAIT_OBJECT_0) continue;
         HudSample sample;
         { std::lock_guard<std::mutex> lock(hudSampleMutex); std::swap(sample, pendingHudSample); }
-        if (sample.pixels.empty() || sample.generation != hudGeneration.load()) continue;
+        if (sample.pixels.empty() || sample.generation != hudGeneration.load() || sample.stamp < hudReacquireAfter.load()) continue;
+        if (sample.generation != generation) { tracker.reset(); generation = sample.generation; }
         auto match = detector.find(sample.pixels.data());
         match.x = sample.left + match.x * sample.scale;
         match.y = sample.top + match.y * sample.scale;
         match.scale *= sample.scale;
+        tracker.observe(match, sample.stamp);
+        const auto stable = tracker.current(sample.stamp);
         if (sample.generation != hudGeneration.load()) continue;
         {
             std::lock_guard<std::mutex> lock(hudAnchorMutex);
             if (sample.generation != hudGeneration.load()) continue;
-            hudAnchor = match; hudAnchorTime = sample.stamp;
+            hudAnchor = stable; hudAnchorTime = tracker.lastAcceptedAt(); hudObservationTime = sample.stamp;
         }
         // Log transitions only; never save gameplay frames or arbitrary key input.
-        if (wasVisible != match.visible) {
+        if (wasVisible != stable.visible) {
             char message[128];
-            std::snprintf(message, sizeof(message), "Native driving HUD %s (confidence %.3f).", match.visible ? "visible" : "hidden", match.confidence);
+            std::snprintf(message, sizeof(message), "Stable driving HUD %s (confidence %.3f).", stable.visible ? "visible" : "hidden", match.confidence);
             log(message);
-            wasVisible = match.visible;
+            wasVisible = stable.visible;
         }
     }
     return 0;
@@ -119,6 +144,7 @@ void publishState() {
 LRESULT CALLBACK keyboardProc(int code, WPARAM message, LPARAM data) {
     if (code == HC_ACTION && keyboard) {
         const auto& key = *reinterpret_cast<KBDLLHOOKSTRUCT*>(data);
+        if (!(key.flags & (LLKHF_INJECTED | LLKHF_UP)) && menuKey(key.vkCode, key.scanCode)) hudResetRequested = true;
         const bool swallow = keyboard->handle(key.vkCode, key.scanCode, key.flags,
             gameFocused(), isDown(MapVirtualKeyW(0x1f, MAPVK_VSC_TO_VK_EX)), modifiersDown());
         publishState();
@@ -132,6 +158,7 @@ LRESULT CALLBACK gameWindowProc(HWND window, UINT message, WPARAM vk, LPARAM dat
         static_cast<ULONG_PTR>(GetMessageExtraInfo()) != throttleTag) {
         const unsigned scan = (static_cast<ULONG_PTR>(data) >> 16) & 0xff;
         const bool extended = (static_cast<ULONG_PTR>(data) & (1u << 24)) != 0;
+        if (menuKey(static_cast<unsigned>(vk), scan)) hudResetRequested = true;
         if (scan == 0x11 && !extended) manualRequested = true;
         if (scan == 0x1f || scan == 0x31 || scan == 0x32 || vk == VK_ESCAPE || vk == VK_RETURN || vk == VK_F1 || vk == VK_F4)
             cancelRequested = true;
@@ -139,27 +166,25 @@ LRESULT CALLBACK gameWindowProc(HWND window, UINT message, WPARAM vk, LPARAM dat
     // The low-level hook must forward F6 so Windows updates its async state.
     // Swallow only the game's window messages, after that update has happened.
     if ((message == WM_KEYDOWN || message == WM_KEYUP || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP)
-        && vk == toggleKey && !modifiersDown() && currentHudAnchor().visible) return 0;
+        && vk == toggleKey && !modifiersDown() && (displayState.load() == 1 || hudCanActivate())) return 0;
     const WNDPROC original = previousWindowProc.load();
     return original ? CallWindowProcW(original, window, message, vk, data) : DefWindowProcW(window, message, vk, data);
 }
 
 void pollInput(autopilot::ToggleEdge& toggle) {
-    const bool focused = gameFocused();
-    const bool driving = currentHudAnchor().visible;
-    const bool brake = isDown(MapVirtualKeyW(0x1f, MAPVK_VSC_TO_VK_EX));
-    if (manualRequested.exchange(false)) cruise.manualThrottle();
-    if (cancelRequested.exchange(false) || !focused || !driving || brake || isDown(MapVirtualKeyW(0x31, MAPVK_VSC_TO_VK_EX)) ||
-        isDown(VK_ESCAPE) || isDown(VK_RETURN) || isDown(VK_F1) || isDown(VK_F4)) {
-        if (cruise.active) log("Autopilot cancelled by brake/engine/menu/focus.");
-        cruise.cancel();
-    }
-    const bool modifiers = modifiersDown();
-    if (autopilot::pollToggle(cruise, toggle, isDown(toggleKey), focused && driving, brake, modifiers)) {
+    if (hudResetRequested.exchange(false)) resetHudTracking(500);
+    autopilot::CruiseInput input;
+    input.focused = gameFocused(); input.drivingHud = hudCanActivate();
+    input.brake = isDown(MapVirtualKeyW(0x1f, MAPVK_VSC_TO_VK_EX));
+    input.engine = isDown(MapVirtualKeyW(0x31, MAPVK_VSC_TO_VK_EX));
+    input.cancel = cancelRequested.exchange(false) || isDown(VK_ESCAPE) || isDown(VK_RETURN) || isDown(VK_F1) || isDown(VK_F4);
+    input.manual = manualRequested.exchange(false); input.toggle = isDown(toggleKey); input.modifiers = modifiersDown();
+    const bool wasActive = cruise.active;
+    if (autopilot::updateCruiseInput(cruise, toggle, input)) {
         log(cruise.active ? "F-key detected: autopilot ON." : cruise.inputFailed ? "F-key detected: input failed." :
-            modifiers || brake || cruise.ownsThrottle ? "F-key detected: activation blocked by brake/modifiers/pending release." : "F-key detected: autopilot OFF.");
+            input.modifiers || input.brake || cruise.ownsThrottle ? "F-key detected: activation blocked by brake/modifiers/pending release." : "F-key detected: autopilot OFF.");
     }
-    cruise.retryRelease();
+    if (wasActive && !cruise.active) log("Autopilot cancelled by explicit input or focus (not HUD recognition).");
     publishState();
 }
 
@@ -196,6 +221,7 @@ UINT renderWidth, renderHeight;
 ID3D11Texture2D* hudReadback[2]{};
 bool hudReadbackPending[2]{};
 ULONGLONG hudReadbackTime[2]{}, lastHudCapture = 0;
+unsigned hudReadbackGeneration[2]{};
 int hudReadbackWidth = 0, hudReadbackHeight = 0;
 
 void releaseHudReadback() {
@@ -204,8 +230,7 @@ void releaseHudReadback() {
         hudReadbackPending[i] = false;
     }
     hudReadbackWidth = hudReadbackHeight = 0;
-    ++hudGeneration;
-    { std::lock_guard<std::mutex> lock(hudAnchorMutex); hudAnchor = {}; hudAnchorTime = 0; }
+    resetHudTracking();
 }
 
 void captureDrivingHud(IDXGISwapChain* chain) {
@@ -242,7 +267,7 @@ void captureDrivingHud(IDXGISwapChain* chain) {
         HudSample sample;
         sample.pixels.resize(autopilot::DrivingHudDetector::cropWidth * autopilot::DrivingHudDetector::cropHeight);
         sample.left = left; sample.top = top; sample.scale = scale;
-        sample.generation = hudGeneration.load(); sample.stamp = hudReadbackTime[i];
+        sample.generation = hudReadbackGeneration[i]; sample.stamp = hudReadbackTime[i];
         auto gray = [&](int px, int py) {
             px = std::clamp(px, 0, static_cast<int>(width) - 1); py = std::clamp(py, 0, static_cast<int>(height) - 1);
             const auto* pixel = static_cast<const unsigned char*>(map.pData) + py * map.RowPitch + px * 4;
@@ -267,6 +292,7 @@ void captureDrivingHud(IDXGISwapChain* chain) {
             const D3D11_BOX box{x, y, 0, x + width, y + height, 1};
             context->CopySubresourceRegion(hudReadback[i], 0, 0, 0, 0, buffer, 0, &box);
             hudReadbackTime[i] = lastHudCapture = GetTickCount64(); hudReadbackPending[i] = true;
+            hudReadbackGeneration[i] = hudGeneration.load();
             break;
         }
     }
@@ -456,7 +482,7 @@ DWORD WINAPI run(void*) {
     directory = path;
     directory.resize(directory.find_last_of(L"\\/") + 1);
     iniPath = directory + L"SnowRunnerAutopilot.ini";
-    log("Native autopilot v3 starting (native driving HUD tracking).");
+    log("Native autopilot v4 starting (stable HUD; recognition independent of throttle).");
     loadConfig();
     hudSampleEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (!hudSampleEvent) { log("HUD observer event failed; input stays disabled."); return 1; }

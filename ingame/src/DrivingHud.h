@@ -12,8 +12,57 @@ struct HudAnchor {
 };
 
 inline bool drivingHudAvailable(bool visible, uint64_t observedAt, uint64_t now) {
-    return visible && now >= observedAt && now - observedAt <= 500;
+    return visible && now >= observedAt && now - observedAt <= 2000;
 }
+
+// Visual tracking is deliberately separate from throttle control. Once three
+// strong, consistent samples calibrate the row, its pose stays fixed until the
+// driving HUD has been absent for two seconds or the UI explicitly resets it.
+class StableDrivingHud {
+    std::vector<HudAnchor> calibration;
+    HudAnchor locked;
+    uint64_t acceptedAt = 0, observedAt = 0;
+    bool calibrated = false, hasObservation = false;
+    static bool consistent(const HudAnchor& a, const HudAnchor& b) {
+        return a.scale > 0 && b.scale > 0 &&
+            std::abs(a.x - b.x) <= 60 * b.scale && std::abs(a.y - b.y) <= 50 * b.scale &&
+            a.scale >= b.scale * .65f && a.scale <= b.scale * 1.55f;
+    }
+public:
+    void reset() { calibration.clear(); locked = {}; acceptedAt = observedAt = 0; calibrated = hasObservation = false; }
+    void observe(const HudAnchor& sample, uint64_t now) {
+        if (hasObservation && now < observedAt) return;
+        observedAt = now; hasObservation = true;
+        if (calibrated && now >= acceptedAt && now - acceptedAt > 2000) {
+            calibration.clear(); calibrated = false; locked = {};
+        }
+        if (calibrated) {
+            // Hysteresis: a deformed/faded glyph may sustain an already proven
+            // session, but cannot establish one on a loading/menu background.
+            if (sample.confidence >= .62f && consistent(sample, locked)) {
+                acceptedAt = now; locked.confidence = sample.confidence;
+            }
+            return;
+        }
+        if (!sample.visible || sample.confidence < .78f) return;
+        if (!calibration.empty() && (!consistent(sample, calibration.front()) || now - acceptedAt > 2000)) calibration.clear();
+        acceptedAt = now;
+        calibration.push_back(sample);
+        if (calibration.size() < 3) return;
+        auto median = [&](float HudAnchor::*field) {
+            float values[3] = {calibration[0].*field, calibration[1].*field, calibration[2].*field};
+            std::sort(values, values + 3); return values[1];
+        };
+        locked = {true, median(&HudAnchor::x), median(&HudAnchor::y), median(&HudAnchor::scale), sample.confidence};
+        calibrated = true; calibration.clear();
+    }
+    HudAnchor current(uint64_t now) const {
+        HudAnchor result = locked;
+        result.visible = calibrated && drivingHudAvailable(true, acceptedAt, now);
+        return result;
+    }
+    uint64_t lastAcceptedAt() const { return acceptedAt; }
+};
 
 // Detect the native parking-brake glyph in a small, normalized HUD crop.
 // Appearance follows the actual driving HUD, rather than keyboard/menu guesses.

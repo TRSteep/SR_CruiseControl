@@ -46,6 +46,23 @@ inline bool pollToggle(CruiseState& cruise, ToggleEdge& edge, bool down, bool fo
     return true;
 }
 
+struct CruiseInput {
+    bool focused = true, drivingHud = false, brake = false, engine = false;
+    bool cancel = false, manual = false, toggle = false, modifiers = false;
+};
+
+inline bool updateCruiseInput(CruiseState& cruise, ToggleEdge& edge, const CruiseInput& input) {
+    if (input.manual) cruise.manualThrottle();
+    if (!input.focused || input.brake || input.engine || input.cancel) cruise.cancel();
+    // Recognition is only an activation guard. A bad/missing picture must
+    // neither cancel an active hold nor prevent F6 from turning it off.
+    const bool toggled = pollToggle(cruise, edge, input.toggle,
+        input.focused && (cruise.active || input.drivingHud),
+        input.brake || input.engine || input.cancel, input.modifiers);
+    cruise.retryRelease();
+    return toggled;
+}
+
 class KeyboardPolicy {
     CruiseState& cruise;
     unsigned toggleKey;

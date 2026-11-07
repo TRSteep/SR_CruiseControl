@@ -32,7 +32,7 @@ int main() {
         const float scale = size.Height / 1080.f;
         { std::lock_guard<std::mutex> lock(hudAnchorMutex);
             hudAnchor = {simulatedDriving, size.Width - 95 * scale, size.Height - 345 * scale, scale, 1};
-            hudAnchorTime = GetTickCount64() - (staleHud ? 1000 : 0);
+            hudAnchorTime = GetTickCount64() - (staleHud ? 3000 : 0);
         }
         chain->Present(0, 0);
     };

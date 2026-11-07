@@ -76,5 +76,33 @@ int main() {
     state.manualThrottle(); sample(false);
     check(!state.active && !state.ownsThrottle, "Window fallback can hand gas to the driver");
     state.cancel();
+    autopilot::ToggleEdge controlEdge;
+    autopilot::CruiseInput input;
+    input.drivingHud = true; input.toggle = true;
+    autopilot::updateCruiseInput(state, controlEdge, input);
+    check(state.active, "Production input path activates after confirmed HUD");
+    input.toggle = false; input.drivingHud = false; count = sent.size();
+    for (int i = 0; i < 300; ++i) autopilot::updateCruiseInput(state, controlEdge, input);
+    check(state.active && state.ownsThrottle && sent.size() == count,
+        "Any length of recognition failure cannot cancel active cruise or inject W-up");
+    input.toggle = true; autopilot::updateCruiseInput(state, controlEdge, input);
+    check(!state.active && !state.ownsThrottle, "F6 can always disable active cruise without recognized HUD");
+    input.toggle = false; autopilot::updateCruiseInput(state, controlEdge, input);
+    input.toggle = true; autopilot::updateCruiseInput(state, controlEdge, input);
+    check(!state.active, "Missing HUD still blocks new activation");
+    for (int reason = 0; reason < 5; ++reason) {
+        input = {}; input.drivingHud = true;
+        autopilot::updateCruiseInput(state, controlEdge, input);
+        input.toggle = true; autopilot::updateCruiseInput(state, controlEdge, input);
+        check(state.active, "Fresh activation before explicit cancellation");
+        input.toggle = false; input.drivingHud = false;
+        if (reason == 0) input.manual = true;
+        if (reason == 1) input.brake = true;
+        if (reason == 2) input.engine = true;
+        if (reason == 3) input.cancel = true;
+        if (reason == 4) input.focused = false;
+        autopilot::updateCruiseInput(state, controlEdge, input);
+        check(!state.active && !state.ownsThrottle, "W/S/N/menu/focus still cancel while HUD is missing");
+    }
     std::printf("PASS: %d native state/input checks\n", checks);
 }
