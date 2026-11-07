@@ -1,0 +1,30 @@
+param([string]$Toolchain = 'C:\msys64\ucrt64\bin')
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$root = $PSScriptRoot
+$out = Join-Path $root '..\..\build\scaleform-probe'
+$minhook = Join-Path $root '..\..\vendor\minhook-1.3.4'
+New-Item -ItemType Directory -Path $out -Force | Out-Null
+$oldPath = $env:PATH
+try {
+    $env:PATH = "$Toolchain;$oldPath"
+    $objects = @()
+    foreach ($file in @('buffer.c','hook.c','trampoline.c','hde\hde64.c')) {
+        $target = Join-Path $out (([IO.Path]::GetFileNameWithoutExtension($file)) + '.o')
+        & "$Toolchain\gcc.exe" -O2 -c (Join-Path $minhook "src\$file") "-I$minhook\include" -o $target
+        if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $file" }
+        $objects += $target
+    }
+    $flags = @('-std=c++17','-O2','-Wall','-Wextra','-Werror','-static',"-I$minhook\include")
+    & "$Toolchain\g++.exe" @flags (Join-Path $root 'ProbeTests.cpp') $objects -lbcrypt -o (Join-Path $out 'ProbeTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Probe test compilation failed.' }
+    & (Join-Path $out 'ProbeTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Probe tests failed.' }
+    & "$Toolchain\g++.exe" @flags (Join-Path $root 'NativeUiTests.cpp') -o (Join-Path $out 'NativeUiTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Native UI test compilation failed.' }
+    & (Join-Path $out 'NativeUiTests.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Native UI tests failed.' }
+    & "$Toolchain\g++.exe" @flags -shared '-Wl,--exclude-all-symbols' (Join-Path $root 'Probe.cpp') $objects -lbcrypt -o (Join-Path $out 'SnowRunnerScaleformProbe.asi')
+    if ($LASTEXITCODE -ne 0) { throw 'Probe compilation failed.' }
+    Write-Output "Built observer: $out\SnowRunnerScaleformProbe.asi"
+} finally { $env:PATH = $oldPath }
