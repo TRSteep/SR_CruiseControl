@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
     std::vector<Fixture> fixtures;
     if (argc == 1) fixtures = {synthetic(true), synthetic(false), synthetic(true)};
     else for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--fixed") { followNativeMotion = false; continue; }
         Fixture fixture;
         std::ifstream file(argv[i], std::ios::binary);
         file.read(reinterpret_cast<char*>(&fixture.width), 4); file.read(reinterpret_cast<char*>(&fixture.height), 4);
@@ -33,6 +34,7 @@ int main(int argc, char** argv) {
         fixture.expected = std::string(argv[i]).find("load") == std::string::npos;
         fixtures.push_back(std::move(fixture));
     }
+    if (fixtures.empty()) fixtures = {synthetic(true), synthetic(false), synthetic(true)};
     module = GetModuleHandleW(nullptr); directory = L"build\\";
     require(installRenderHooks(), "Install real DX11 hooks");
     WNDCLASSW wc{}; wc.lpfnWndProc = DefWindowProcW; wc.hInstance = module; wc.lpszClassName = L"AutopilotGpuObserverTest";
@@ -65,13 +67,13 @@ int main(int argc, char** argv) {
             std::lock_guard<std::mutex> lock(hudAnchorMutex);
             if (hudObservationTime >= start && hudAnchor.visible == fixture.expected) {
                 if (fixture.expected) {
-                    if (havePose && fixture.width == fixtures[i-1].width && fixture.height == fixtures[i-1].height)
+                    if (!followNativeMotion && havePose && fixture.width == fixtures[i-1].width && fixture.height == fixtures[i-1].height)
                         require(hudAnchor.x == fixedPose.x && hudAnchor.y == fixedPose.y && hudAnchor.scale == fixedPose.scale,
                             "Different road-shake frames must keep exactly the same row pose");
                     fixedPose = hudAnchor; havePose = true;
                 } else havePose = false;
-                std::printf("GPU reference %u: driving=%d, score=%.3f, anchor=(%.1f,%.1f)\n",
-                    static_cast<unsigned>(i + 1), hudAnchor.visible, hudAnchor.confidence, hudAnchor.x, hudAnchor.y);
+                std::printf("GPU reference %u: driving=%d, score=%.3f, anchor=(%.1f,%.1f), tilt=%.1f\n",
+                    static_cast<unsigned>(i + 1), hudAnchor.visible, hudAnchor.confidence, hudAnchor.x, hudAnchor.y, hudAnchor.angle * 57.29578f);
                 completed = true; break;
             }
         }

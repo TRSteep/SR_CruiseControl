@@ -9,6 +9,7 @@ namespace autopilot {
 struct HudAnchor {
     bool visible = false;
     float x = 0, y = 0, scale = 1, confidence = 0;
+    float angle = .055f, angleConfidence = 0; // radians, native plate-edge evidence
 };
 
 inline bool drivingHudAvailable(bool visible, uint64_t observedAt, uint64_t now) {
@@ -54,6 +55,7 @@ public:
             std::sort(values, values + 3); return values[1];
         };
         locked = {true, median(&HudAnchor::x), median(&HudAnchor::y), median(&HudAnchor::scale), sample.confidence};
+        locked.angle = median(&HudAnchor::angle);
         calibrated = true; calibration.clear();
     }
     HudAnchor current(uint64_t now) const {
@@ -62,6 +64,51 @@ public:
         return result;
     }
     uint64_t lastAcceptedAt() const { return acceptedAt; }
+};
+
+// Optional visual motion, never consulted by the throttle state machine.
+// Weak detections retain the last pose instead of inventing camera shake.
+class NativeHudMotion {
+    HudAnchor target;
+    bool initialized = false;
+public:
+    void reset() { target = {}; initialized = false; }
+    HudAnchor update(const HudAnchor& observation, const HudAnchor& stable) {
+        if (!stable.visible) { reset(); return stable; }
+        if (!initialized) { target = stable; initialized = true; }
+        if (observation.confidence >= .70f &&
+            std::abs(observation.x - stable.x) <= 60 * stable.scale &&
+            std::abs(observation.y - stable.y) <= 50 * stable.scale &&
+            observation.scale >= stable.scale * .65f && observation.scale <= stable.scale * 1.55f) {
+            if (std::abs(observation.x - target.x) > stable.scale) target.x = observation.x;
+            if (std::abs(observation.y - target.y) > stable.scale) target.y = observation.y;
+            target.scale = std::clamp(observation.scale, stable.scale * .96f, stable.scale * 1.04f);
+            if (observation.angleConfidence >= 8) target.angle = observation.angle;
+        }
+        target.visible = true; target.confidence = stable.confidence;
+        return target;
+    }
+};
+
+class HudPoseSmoother {
+    HudAnchor displayed;
+    bool initialized = false;
+public:
+    void reset() { initialized = false; displayed = {}; }
+    HudAnchor advance(const HudAnchor& target, float deltaTime) {
+        if (!target.visible) { reset(); return target; }
+        if (!initialized) { displayed = target; initialized = true; return displayed; }
+        const float dt = std::clamp(deltaTime, 0.f, .05f);
+        const float positionAlpha = 1 - std::exp(-dt / .075f);
+        const float shapeAlpha = 1 - std::exp(-dt / .14f);
+        const float maxStep = 240 * displayed.scale * dt;
+        displayed.x += std::clamp((target.x - displayed.x) * positionAlpha, -maxStep, maxStep);
+        displayed.y += std::clamp((target.y - displayed.y) * positionAlpha, -maxStep, maxStep);
+        displayed.scale += (target.scale - displayed.scale) * shapeAlpha;
+        displayed.angle += std::clamp((target.angle - displayed.angle) * shapeAlpha, -dt * .8f, dt * .8f);
+        displayed.visible = true; displayed.confidence = target.confidence;
+        return displayed;
+    }
 };
 
 // Detect the native parking-brake glyph in a small, normalized HUD crop.
@@ -96,6 +143,34 @@ class DrivingHudDetector {
         }
         return best;
     }
+    void estimatePlateAngle(const unsigned char* crop, HudAnchor& anchor) const {
+        // Fit both horizontal edges of the native row. Opposite edge polarity
+        // and a long span suppress letters, the icon and random scenery edges.
+        float best = 0, fitted = anchor.angle;
+        const float s = anchor.scale;
+        const float begin = std::max(5.f, anchor.x - 150 * s);
+        const float end = std::min(static_cast<float>(cropWidth - 5), anchor.x - 28 * s);
+        if (end - begin < 60 * s) return;
+        for (float angle = -.10f; angle <= .161f; angle += .01f)
+            for (float shift = -8; shift <= 8; shift += 2)
+                for (float height : {36.f, 40.f, 44.f}) {
+                    float quality = 0; int agreement = 0;
+                    for (int col = 0; col < 24; ++col) {
+                        const float x = begin + (end - begin) * (col + .5f) / 24;
+                        const float top = anchor.y + (-20 + shift) * s + (x - anchor.x) * std::tan(angle);
+                        const float bottom = top + height * s;
+                        const float a = sample(crop, cropWidth, cropHeight, x, top - 2 * s) -
+                            sample(crop, cropWidth, cropHeight, x, top + 2 * s);
+                        const float b = sample(crop, cropWidth, cropHeight, x, bottom + 2 * s) -
+                            sample(crop, cropWidth, cropHeight, x, bottom - 2 * s);
+                        quality += std::clamp(a, -35.f, 35.f) + std::clamp(b, -35.f, 35.f);
+                        if (a > 5 && b > 5) ++agreement;
+                    }
+                    quality /= 48;
+                    if (agreement >= 8 && quality > best) { best = quality; fitted = angle; }
+                }
+        if (best >= 8) { anchor.angle = fitted; anchor.angleConfidence = best; }
+    }
 public:
     static constexpr int cropWidth = 220, cropHeight = 260;
     static constexpr float cropRight = 240, cropBottom = 440;
@@ -128,6 +203,7 @@ public:
                     if (value > best.confidence) best = {false, x + width / 2, y + width * .375f, width / 36, value};
                 }
         best.visible = best.confidence >= .78f;
+        if (best.confidence >= .70f) estimatePlateAngle(crop, best);
         return best;
     }
     // CPU-only reference-image tests use the same normalized crop as the GPU path.

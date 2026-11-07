@@ -39,6 +39,11 @@ int main() {
     for (int state = 0; state < 3; ++state) {
         displayState = state; frame(); frame();
         require(imgui && selectedChain == chain, "Real Present hook initializes renderer");
+        ImGui::SetCurrentContext(imgui);
+        const auto& vertices = ImGui::GetForegroundDrawList()->VtxBuffer;
+        require(vertices.Size >= 4 && vertices[1].pos.y > vertices[0].pos.y + 1,
+            "The complete row's textured background must inherit the native tilt");
+        ImGui::SetCurrentContext(nullptr);
         const auto path = directory + L"hud-state-" + std::to_wstring(state) + L".bmp";
         require(capture(chain, path.c_str()) > 150, "HUD text has visible pixels");
     }

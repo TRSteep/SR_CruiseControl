@@ -15,6 +15,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "CruiseState.h"
 #include "DrivingHud.h"
+#include "PanelArtwork.h"
 
 namespace {
 HMODULE module;
@@ -26,6 +27,8 @@ std::atomic<bool> stopping{false};
 unsigned toggleKey = VK_F6;
 float offsetX = 0, offsetY = 0, hudScale = 1;
 bool hudVisible = true;
+bool followNativeMotion = true;
+float tiltOffset = 0;
 HHOOK keyboardHook;
 autopilot::KeyboardPolicy* keyboard;
 constexpr ULONG_PTR throttleTag = 0x53524150;
@@ -75,6 +78,7 @@ bool menuKey(unsigned vk, unsigned scan) {
 DWORD WINAPI observeDrivingHud(void*) {
     autopilot::DrivingHudDetector detector;
     autopilot::StableDrivingHud tracker;
+    autopilot::NativeHudMotion motion;
     unsigned generation = hudGeneration.load();
     bool wasVisible = false;
     while (!stopping.load()) {
@@ -82,18 +86,19 @@ DWORD WINAPI observeDrivingHud(void*) {
         HudSample sample;
         { std::lock_guard<std::mutex> lock(hudSampleMutex); std::swap(sample, pendingHudSample); }
         if (sample.pixels.empty() || sample.generation != hudGeneration.load() || sample.stamp < hudReacquireAfter.load()) continue;
-        if (sample.generation != generation) { tracker.reset(); generation = sample.generation; }
+        if (sample.generation != generation) { tracker.reset(); motion.reset(); generation = sample.generation; }
         auto match = detector.find(sample.pixels.data());
         match.x = sample.left + match.x * sample.scale;
         match.y = sample.top + match.y * sample.scale;
         match.scale *= sample.scale;
         tracker.observe(match, sample.stamp);
         const auto stable = tracker.current(sample.stamp);
+        const auto visual = followNativeMotion ? motion.update(match, stable) : stable;
         if (sample.generation != hudGeneration.load()) continue;
         {
             std::lock_guard<std::mutex> lock(hudAnchorMutex);
             if (sample.generation != hudGeneration.load()) continue;
-            hudAnchor = stable; hudAnchorTime = tracker.lastAcceptedAt(); hudObservationTime = sample.stamp;
+            hudAnchor = visual; hudAnchorTime = tracker.lastAcceptedAt(); hudObservationTime = sample.stamp;
         }
         // Log transitions only; never save gameplay frames or arbitrary key input.
         if (wasVisible != stable.visible) {
@@ -195,6 +200,8 @@ void loadConfig() {
     offsetY = static_cast<float>(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"OffsetY", 0, iniPath.c_str())), -1000, 1000));
     hudScale = std::clamp(GetPrivateProfileIntW(L"HUD", L"ScalePercent", 100, iniPath.c_str()) / 100.f, .5f, 2.f);
     hudVisible = GetPrivateProfileIntW(L"HUD", L"Visible", 1, iniPath.c_str()) != 0;
+    followNativeMotion = GetPrivateProfileIntW(L"HUD", L"FollowNativeMotion", 1, iniPath.c_str()) != 0;
+    tiltOffset = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"TiltOffsetDegrees", 0, iniPath.c_str())), -15, 15) * .0174532925f;
 }
 void saveHud() {
     auto write = [](const wchar_t* key, int value) {
@@ -205,6 +212,8 @@ void saveHud() {
     write(L"OffsetY", static_cast<int>(offsetY));
     write(L"ScalePercent", static_cast<int>(hudScale * 100 + .5f));
     write(L"Visible", hudVisible ? 1 : 0);
+    write(L"FollowNativeMotion", followNativeMotion ? 1 : 0);
+    write(L"TiltOffsetDegrees", static_cast<int>(std::round(tiltOffset * 57.29578f)));
 }
 
 using PresentFn = HRESULT(STDMETHODCALLTYPE*)(IDXGISwapChain*, UINT, UINT);
@@ -217,12 +226,29 @@ ID3D11Device* device;
 ID3D11DeviceContext* context;
 ID3D11RenderTargetView* renderTarget;
 ImGuiContext* imgui;
+ID3D11ShaderResourceView* panelTexture;
+autopilot::HudPoseSmoother hudPoseSmoother;
+unsigned drawnHudGeneration = 0;
 UINT renderWidth, renderHeight;
 ID3D11Texture2D* hudReadback[2]{};
 bool hudReadbackPending[2]{};
 ULONGLONG hudReadbackTime[2]{}, lastHudCapture = 0;
 unsigned hudReadbackGeneration[2]{};
 int hudReadbackWidth = 0, hudReadbackHeight = 0;
+
+bool createPanelTexture() {
+    const auto pixels = autopilot::makePanelArtwork();
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = 512; desc.Height = 112; desc.MipLevels = desc.ArraySize = 1;
+    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_IMMUTABLE; desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    D3D11_SUBRESOURCE_DATA data{}; data.pSysMem = pixels.data(); data.SysMemPitch = desc.Width * 4;
+    ID3D11Texture2D* texture = nullptr;
+    if (FAILED(device->CreateTexture2D(&desc, &data, &texture))) return false;
+    const HRESULT result = device->CreateShaderResourceView(texture, nullptr, &panelTexture);
+    texture->Release();
+    return SUCCEEDED(result);
+}
 
 void releaseHudReadback() {
     for (int i = 0; i < 2; ++i) {
@@ -331,7 +357,9 @@ bool initializeRenderer(IDXGISwapChain* chain) {
         io.Fonts->AddFontDefault();
     const bool win32 = ImGui_ImplWin32_Init(desc.OutputWindow);
     const bool dx11 = win32 && ImGui_ImplDX11_Init(device, context);
-    if (!dx11 || !makeTarget(chain)) {
+    const bool artwork = dx11 && createPanelTexture();
+    if (!artwork || !makeTarget(chain)) {
+        if (panelTexture) { panelTexture->Release(); panelTexture = nullptr; }
         if (dx11) ImGui_ImplDX11_Shutdown();
         if (win32) ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext(imgui); imgui = nullptr;
@@ -367,20 +395,22 @@ void renderHud() {
         if (hide) hudVisible = !hudVisible;
         if (left || right || up || down || larger || smaller || hide) saveHud();
     }
-    const auto anchor = currentHudAnchor();
-    if (!hudVisible || !anchor.visible) return;
+    const auto target = currentHudAnchor();
+    if (drawnHudGeneration != hudGeneration.load()) { hudPoseSmoother.reset(); drawnHudGeneration = hudGeneration.load(); }
+    if (!hudVisible || !target.visible) { hudPoseSmoother.reset(); return; }
     const ImGuiIO& io = ImGui::GetIO();
+    const auto anchor = followNativeMotion ? hudPoseSmoother.advance(target, io.DeltaTime) : target;
     const float scale = std::clamp(io.DisplaySize.y / 1080.f, .5f, 3.f);
     const float textScale = anchor.scale * hudScale;
     const float width = 202 * textScale, height = 40 * textScale;
     const float x = std::clamp(anchor.x - 178 * anchor.scale + offsetX * scale, 0.f, std::max(0.f, io.DisplaySize.x - 235 * textScale));
     const float y = std::clamp(anchor.y - (20 + 48) * anchor.scale + offsetY * scale, 0.f, std::max(0.f, io.DisplaySize.y - height));
     ImDrawList* draw = ImGui::GetForegroundDrawList();
-    const ImVec2 plate[] = {{x + 4 * textScale,y}, {x + width,y + 2 * textScale},
-        {x + width,y + height}, {x + 3 * textScale,y + height - 2 * textScale},
-        {x,y + height - 8 * textScale}, {x + 2 * textScale,y + 7 * textScale}};
-    draw->AddConvexPolyFilled(plate, 6, IM_COL32(18, 22, 23, 145));
+    const int firstVertex = draw->VtxBuffer.Size;
     const int state = displayState.load();
+    draw->AddImage(static_cast<ImTextureID>(reinterpret_cast<intptr_t>(panelTexture)),
+        ImVec2(x - 12 * textScale, y - 3 * textScale), ImVec2(x + width + 4 * textScale, y + height + 3 * textScale),
+        ImVec2(0, 0), ImVec2(1, 1), IM_COL32(10, 13, 12, state == 1 ? 235 : 165));
     const ImU32 color = state == 2 ? IM_COL32(239, 116, 78, 235) : state == 1 ? IM_COL32(213, 224, 122, 235) : IM_COL32(210, 213, 209, 200);
     draw->AddText(ImGui::GetFont(), (state == 2 ? 17 : 20) * textScale,
         ImVec2(x + 19 * textScale, y + 8 * textScale), color, state == 2 ? "ОШИБКА ВВОДА" : "АВТОПИЛОТ");
@@ -394,6 +424,14 @@ void renderHud() {
     const ImVec2 keySize = ImGui::GetFont()->CalcTextSizeA(16 * textScale, FLT_MAX, 0, keyLabel);
     draw->AddText(ImGui::GetFont(), 16 * textScale, ImVec2(keyPos.x + (24 * textScale - keySize.x) / 2,
         keyPos.y + (24 * textScale - keySize.y) / 2), IM_COL32(43, 55, 59, 255), keyLabel);
+    // Rotate the complete row together: texture, text, gauge and key hint.
+    const float angle = std::clamp(anchor.angle + tiltOffset, -.26f, .26f);
+    const float cosine = std::cos(angle), sine = std::sin(angle);
+    const ImVec2 pivot(anchor.x + offsetX * scale, anchor.y + offsetY * scale);
+    for (int i = firstVertex; i < draw->VtxBuffer.Size; ++i) {
+        const float vx = draw->VtxBuffer[i].pos.x - pivot.x, vy = draw->VtxBuffer[i].pos.y - pivot.y;
+        draw->VtxBuffer[i].pos = ImVec2(pivot.x + vx * cosine - vy * sine, pivot.y + vx * sine + vy * cosine);
+    }
 }
 
 HRESULT STDMETHODCALLTYPE presentHook(IDXGISwapChain* chain, UINT sync, UINT flags) {
@@ -482,7 +520,7 @@ DWORD WINAPI run(void*) {
     directory = path;
     directory.resize(directory.find_last_of(L"\\/") + 1);
     iniPath = directory + L"SnowRunnerAutopilot.ini";
-    log("Native autopilot v4 starting (stable HUD; recognition independent of throttle).");
+    log("Native autopilot v5 starting (ragged tilted row; smoothed native HUD motion; independent throttle).");
     loadConfig();
     hudSampleEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (!hudSampleEvent) { log("HUD observer event failed; input stays disabled."); return 1; }

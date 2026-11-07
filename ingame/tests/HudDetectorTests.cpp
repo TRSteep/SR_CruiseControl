@@ -16,8 +16,8 @@ int main(int argc, char** argv) {
             if (!file) throw std::runtime_error("Truncated image");
             auto crop = detector.cropGray(pixels.data(), width, height);
             auto anchor = detector.find(crop.data());
-            std::printf("%s: visible=%d score=%.3f center=(%.1f,%.1f) scale=%.3f\n", argv[i], anchor.visible,
-                anchor.confidence, anchor.x, anchor.y, anchor.scale);
+            std::printf("%s: visible=%d score=%.3f center=(%.1f,%.1f) scale=%.3f tilt=%.1f edge=%.1f\n", argv[i], anchor.visible,
+                anchor.confidence, anchor.x, anchor.y, anchor.scale, anchor.angle * 57.29578f, anchor.angleConfidence);
             const bool expected = std::string(argv[i]).find("load") == std::string::npos;
             if (anchor.visible != expected) return 1;
         }
@@ -61,5 +61,28 @@ int main(int argc, char** argv) {
     if (!tracker.current(seen + 2640).visible) throw std::runtime_error("Returning to driving must recalibrate");
     tracker.reset();
     if (tracker.current(seen + 2640).visible) throw std::runtime_error("Menu/resolution reset must hide immediately");
+    autopilot::NativeHudMotion motion;
+    autopilot::HudPoseSmoother smoother;
+    autopilot::HudAnchor base{true, 1800, 735, 1, .9f, .04f, 25};
+    const auto start = motion.update(base, base);
+    smoother.advance(start, 1.f / 60);
+    auto measured = base; measured.x += 24; measured.y -= 12; measured.scale = 1.03f; measured.angle = .09f;
+    const auto target = motion.update(measured, base);
+    const auto first = smoother.advance(target, 1.f / 60);
+    if (!(first.x > start.x && first.x < target.x && first.y < start.y && first.y > target.y &&
+        first.angle > start.angle && first.angle < target.angle))
+        throw std::runtime_error("Motion and tilt must interpolate instead of jumping to detector samples");
+    autopilot::HudAnchor displayed;
+    for (int i = 0; i < 120; ++i) displayed = smoother.advance(target, 1.f / 60);
+    if (std::abs(displayed.x - target.x) > .01f || std::abs(displayed.angle - target.angle) > .001f)
+        throw std::runtime_error("Smoothed row must follow the measured native pose");
+    auto bad = measured; bad.x += 300; bad.y -= 200;
+    auto held = motion.update(bad, base);
+    if (held.x != target.x || held.y != target.y) throw std::runtime_error("Spurious matches must not move the row");
+    bad = measured; bad.x += 12; bad.confidence = .65f;
+    held = motion.update(bad, base);
+    if (held.x != target.x) throw std::runtime_error("Low-confidence frames must hold motion target");
+    if (smoother.advance({}, 1.f / 60).visible) throw std::runtime_error("Motion may not resurrect a hidden HUD");
     std::puts("PASS: HUD calibration, fixed pose, 90 road-shake samples, confidence hysteresis, missing-frame grace, expiry and re-entry");
+    std::puts("PASS: measured visual motion, smooth position/tilt, convergence, outlier rejection and hidden-state reset");
 }
