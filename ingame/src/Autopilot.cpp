@@ -25,9 +25,9 @@ std::atomic<int> displayState{0}; // 0 off, 1 on, 2 input error
 std::atomic<bool> ownsInput{false};
 std::atomic<bool> stopping{false};
 unsigned toggleKey = VK_F6;
-float offsetX = 0, offsetY = 0, hudScale = 1;
+float offsetX = 0, offsetY = 0, hudScale = 1.1f;
 bool hudVisible = true;
-bool followNativeMotion = true;
+bool followNativeMotion = false;
 float tiltOffset = 0;
 HHOOK keyboardHook;
 autopilot::KeyboardPolicy* keyboard;
@@ -198,9 +198,9 @@ void loadConfig() {
     if (toggleKey < VK_F2 || toggleKey > VK_F12 || toggleKey == VK_F4) toggleKey = VK_F6;
     offsetX = static_cast<float>(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"OffsetX", 0, iniPath.c_str())), -1000, 1000));
     offsetY = static_cast<float>(std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"OffsetY", 0, iniPath.c_str())), -1000, 1000));
-    hudScale = std::clamp(GetPrivateProfileIntW(L"HUD", L"ScalePercent", 100, iniPath.c_str()) / 100.f, .5f, 2.f);
+    hudScale = std::clamp(GetPrivateProfileIntW(L"HUD", L"ScalePercent", 110, iniPath.c_str()) / 100.f, .5f, 2.f);
     hudVisible = GetPrivateProfileIntW(L"HUD", L"Visible", 1, iniPath.c_str()) != 0;
-    followNativeMotion = GetPrivateProfileIntW(L"HUD", L"FollowNativeMotion", 1, iniPath.c_str()) != 0;
+    followNativeMotion = GetPrivateProfileIntW(L"HUD", L"FollowNativeMotion", 0, iniPath.c_str()) != 0;
     tiltOffset = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"HUD", L"TiltOffsetDegrees", 0, iniPath.c_str())), -15, 15) * .0174532925f;
 }
 void saveHud() {
@@ -403,8 +403,9 @@ void renderHud() {
     const float scale = std::clamp(io.DisplaySize.y / 1080.f, .5f, 3.f);
     const float textScale = anchor.scale * hudScale;
     const float width = 202 * textScale, height = 40 * textScale;
-    const float x = std::clamp(anchor.x - 178 * anchor.scale + offsetX * scale, 0.f, std::max(0.f, io.DisplaySize.x - 235 * textScale));
-    const float y = std::clamp(anchor.y - (20 + 48) * anchor.scale + offsetY * scale, 0.f, std::max(0.f, io.DisplaySize.y - height));
+    // Grow left/up, retaining the right edge and clearance above the brake row.
+    const float x = std::clamp(anchor.x + 24 * anchor.scale - width + offsetX * scale, 0.f, std::max(0.f, io.DisplaySize.x - 235 * textScale));
+    const float y = std::clamp(anchor.y - 28 * anchor.scale - height + offsetY * scale, 0.f, std::max(0.f, io.DisplaySize.y - height));
     ImDrawList* draw = ImGui::GetForegroundDrawList();
     const int firstVertex = draw->VtxBuffer.Size;
     const int state = displayState.load();
@@ -520,7 +521,7 @@ DWORD WINAPI run(void*) {
     directory = path;
     directory.resize(directory.find_last_of(L"\\/") + 1);
     iniPath = directory + L"SnowRunnerAutopilot.ini";
-    log("Native autopilot v5 starting (ragged tilted row; smoothed native HUD motion; independent throttle).");
+    log("Native autopilot v6 starting (larger static ragged tilted row; independent throttle).");
     loadConfig();
     hudSampleEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     if (!hudSampleEvent) { log("HUD observer event failed; input stays disabled."); return 1; }
