@@ -1,5 +1,7 @@
 # SnowRunner Cruise control (SnowRunner CC)
 
+![Иконка утилиты](assets/cruise-control.png)
+
 [English](#english) · [Русский](#русский)
 
 ## English
