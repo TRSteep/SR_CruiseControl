@@ -7,6 +7,11 @@ namespace {
 unsigned checks=0; int references=0; unsigned emptyCalls=0, removals=0, mouseDisabled=0;
 bool missingPanel=false, failText=false, duplicate=false;
 double rowY=0; bool wroteTest=false;
+unsigned traceBegins=0,traceEnds=0,failedCalls=0;
+void trace(const char* operation,const char*,bool success) {
+    if (std::strstr(operation,".begin")) ++traceBegins;
+    if (std::strstr(operation,".end")) { ++traceEnds; if (!success) ++failedCalls; }
+}
 void check(bool b) { ++checks; if (!b) { std::fprintf(stderr,"FAIL native UI check %u\n",checks); std::exit(1); } }
 nativeui::Value object(unsigned id) {
     nativeui::Value v; v.type=0x4a; v.interfacePointer=0x100; v.object=id; return v;
@@ -59,7 +64,7 @@ bool empty(void*,void* parent,nativeui::Value* out,const char* name,int depth) {
 }
 }
 int main() {
-    nativeui::Api api{get,set,invoke,release,attach,empty};
+    nativeui::Api api{get,set,invoke,release,attach,empty,trace};
     check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::Created);
     check(references==0 && emptyCalls==1 && removals==0 && mouseDisabled==2 && wroteTest && std::abs(rowY+88)<.001);
     duplicate=true; check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::Existing);
@@ -68,5 +73,6 @@ int main() {
     check(references==0 && removals==1); failText=false;
     missingPanel=true; check(nativeui::addTestRowToPanel(api,nativeui::Value{},object(3))==nativeui::Stage::NoPanel);
     check(references==0 && emptyCalls==2);
+    check(traceBegins==traceEnds && traceBegins>0 && failedCalls==1);
     std::printf("PASS: %u native UI ABI/lifetime/rollback checks\n",checks);
 }

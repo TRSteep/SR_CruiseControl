@@ -69,6 +69,12 @@ void publish(const Event& event) {
     if (index >= capacity) return;
     events[index] = event; ready[index].store(true, std::memory_order_release);
 }
+void traceUi(const char* operation,const char* member,bool success) {
+    Event e{}; e.kind=5; e.thread=GetCurrentThreadId(); e.success=success;
+    std::snprintf(e.symbol,sizeof(e.symbol),"UI-%s",operation);
+    std::snprintf(e.instance,sizeof(e.instance),"%s",member);
+    publish(e);
+}
 bool relevant(const char* name) {
     // Bounded sample of other symbols establishes whether the hook executes.
     const auto index = observed.fetch_add(1, std::memory_order_relaxed);
@@ -182,7 +188,7 @@ bool bindUi(unsigned char* image) {
     }
     ui = {reinterpret_cast<nativeui::Get>(image+0x1b5d4b0),reinterpret_cast<nativeui::Set>(image+0x1b5d870),
         reinterpret_cast<nativeui::Invoke>(image+0x1b5dcb0),reinterpret_cast<nativeui::Release>(image+0x1b5d0f0),
-        reinterpret_cast<nativeui::Attach>(image+attachRva),reinterpret_cast<nativeui::Empty>(image+0x1b61560)};
+        reinterpret_cast<nativeui::Attach>(image+attachRva),reinterpret_cast<nativeui::Empty>(image+0x1b61560),traceUi};
     return true;
 }
 HMODULE module = nullptr;
@@ -193,7 +199,7 @@ DWORD WINAPI run(void*) {
     enableTestRow = GetPrivateProfileIntW(L"Probe",L"EnableTestRow",0,configPath.c_str()) == 1;
     logPath += L"SnowRunnerScaleformProbe.log";
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
-    std::fprintf(log, "Scaleform diagnostic probe 4; TEST=%u (after game-owned brakeBtn read); no input writes.\n",enableTestRow); std::fflush(log);
+    std::fprintf(log, "Scaleform diagnostic probe 5; TEST=%u (after game-owned brakeBtn read); traced UI calls; no input writes.\n",enableTestRow); std::fflush(log);
     char hash[65]{};
     const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!hashExe(hash) || std::strcmp(hash, expectedHash) || !compatible(image) || !bindUi(image)) {
