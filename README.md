@@ -15,6 +15,7 @@ Choose one version:
 | **Standalone 1.0.1** | Separate portable application with a tray icon. No changes to game files; start it before playing. It does not depend on an exact EXE hash, although game updates may still affect input compatibility. | [Standalone README](standalone/README.md) · [Release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) |
 | **HUD** | Loads with the game and adds a row to its native interface. Requires the supported game executable; updates and other mods can affect compatibility. | [HUD README](ingame/README.md) · [Release 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) |
 
+-----------------------
 ## Русский
 
 Удержание газа в SnowRunner для Windows x64. Попытка сделать удобным долгое перемешивание грязи без педалей: автомобиль медленно, но упорно пробирается вперёд, а постоянно держать W надоедает. SnowRunner CC удерживает газ до отключения водителем.
