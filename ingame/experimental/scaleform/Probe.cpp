@@ -22,7 +22,7 @@ constexpr unsigned char createPrefix[] = {0x48,0x89,0x5c,0x24,0x18,0x48,0x89,0x7
 constexpr unsigned char attachPrefix[] = {0x4c,0x8b,0xdc,0x4d,0x89,0x4b,0x20,0x4d,0x89,0x43,0x18,0x55};
 constexpr char expectedHash[] = "a3cb442ec138eb2eb7e335e5c80e376766550740e49e233ac9eace035e182285";
 
-// Observed game wrapper: two cache words precede its managed GFx fields.
+// Observed GFx value: intrusive-list links precede its managed payload.
 // Never retain, release or manufacture a game-owned value in this observer.
 using ObservedValue = nativeui::Value;
 static_assert(sizeof(ObservedValue) == 48);
@@ -42,7 +42,9 @@ using Advance=float(*)(void*,float,unsigned,bool);
 using Destroy=uintptr_t(*)(void*,unsigned);
 Advance originalAdvance=nullptr;
 Destroy originalDestroy=nullptr;
-nativeui::Session sessions(ui);
+// Keep the registry allocated until process exit. Normal Movie destruction
+// releases its entries before the VM dies; no C++ global destructor calls it.
+nativeui::Session& sessions=*new nativeui::Session(ui);
 std::atomic<unsigned> nativeFrames{0};
 void registerRow(const ObservedValue& panel,const ObservedValue& row);
 #endif
@@ -260,7 +262,7 @@ DWORD WINAPI run(void*) {
 #endif
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-    std::fprintf(log,"Native Scaleform autopilot 8; enabled=%u; F-key=%u; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
+    std::fprintf(log,"Native Scaleform autopilot 9; enabled=%u; F-key=%u; stable managed values; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
 #else
     std::fprintf(log, "Scaleform diagnostic probe 7; TEST=%u (native row attached to library-backed panel); no AS3 Invoke or input writes.\n",enableTestRow);
 #endif

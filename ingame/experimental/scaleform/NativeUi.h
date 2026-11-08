@@ -7,7 +7,8 @@
 namespace nativeui {
 // Exact observed ABI of the supported SnowRunner EXE, not a generic SDK type.
 struct Value {
-    uint64_t cache[2] = {UINT64_MAX, UINT64_MAX};
+    // Intrusive managed-value links: a registered Value must never move.
+    uint64_t links[2] = {UINT64_MAX, UINT64_MAX};
     uintptr_t interfacePointer = 0;
     uint32_t type = 0, padding = 0;
     uintptr_t object = 0, auxiliary = 0;
@@ -51,6 +52,17 @@ public:
     explicit Owned(const Api& a):api(a){}
     Owned(const Owned&) = delete;
     Owned& operator=(const Owned&) = delete;
+    void reset() {
+        if(value.type&0x40)api.release(iface(value),&value,data(value));
+        value={};
+    }
+    void assignBorrowed(const Value& source) {
+        if(&source==&value)return;
+        reset();
+        value.interfacePointer=source.interfacePointer;value.type=source.type;
+        value.object=source.object;value.auxiliary=source.auxiliary;
+        if(value.type&0x40)api.retain(iface(value),&value,data(value));
+    }
     ~Owned() {
         if (value.type & 0x40) {
             trace(api,"release.begin","");

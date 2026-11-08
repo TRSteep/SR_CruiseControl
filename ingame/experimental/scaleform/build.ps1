@@ -45,7 +45,7 @@ try {
         $config=if($Autopilot){'SnowRunnerNativeAutopilot.ini'}else{'SnowRunnerScaleformProbe.ini'}
         Copy-Item -LiteralPath (Join-Path $out $binary),(Join-Path $root $config),(Join-Path $root 'README.md') -Destination $packageDir
         Copy-Item -LiteralPath (Join-Path $minhook 'LICENSE.txt') -Destination (Join-Path $packageDir 'MinHook-LICENSE.txt')
-        $archive=Join-Path $out $(if($Autopilot){'SnowRunner-Native-Autopilot-v8.zip'}else{'SnowRunner-Scaleform-Prototype-v7.zip'})
+        $archive=Join-Path $out $(if($Autopilot){'SnowRunner-Native-Autopilot-v9.zip'}else{'SnowRunner-Scaleform-Prototype-v7.zip'})
         $packageFiles=@($binary,$config,'README.md','MinHook-LICENSE.txt') | ForEach-Object { Join-Path $packageDir $_ }
         Compress-Archive -LiteralPath $packageFiles -DestinationPath $archive -Force
         Write-Output "Packaged: $archive"
