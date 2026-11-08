@@ -1,6 +1,7 @@
 #pragma once
 #include "NativeUi.h"
 #include "CruiseIcon.h"
+#include "HudLocalization.h"
 #include <algorithm>
 #include <memory>
 #include <mutex>
@@ -27,6 +28,9 @@ class Session {
         Owned panel,row;
         int state=-1;
         bool ready=true;
+        hudlocale::Language language=hudlocale::Language::English;
+        float languageElapsed=1;
+        std::string caption;
         Row(const Api& api,const Value& parent,const Value& child):panel(api),row(api) {
             panel.assignBorrowed(parent);row.assignBorrowed(child);
         }
@@ -35,10 +39,11 @@ class Session {
     };
     using Entry=std::shared_ptr<Row>;
     const Api& api;
+    const hudlocale::Read read;
     std::mutex mutex;
     std::unordered_map<void*,std::vector<Entry>> movies;
 public:
-    explicit Session(const Api& value):api(value){}
+    explicit Session(const Api& value,hudlocale::Read reader=nullptr):api(value),read(reader){}
     bool has(void* movie){std::lock_guard<std::mutex> lock(mutex);return movies.find(movie)!=movies.end();}
     void add(void* movie,const Value& panel,const Value& row) {
         auto added=std::make_shared<Row>(api,panel,row);
@@ -61,7 +66,7 @@ public:
             discarded=std::move(found->second);movies.erase(found);
         }
     }
-    bool tick(void* movie,int state,const char* label) {
+    bool tick(void* movie,int state,const char* label,float delta=0) {
         std::vector<Entry> work;
         {
             std::lock_guard<std::mutex> lock(mutex);
@@ -72,16 +77,31 @@ public:
         // No registry lock is held while executing AS3 property accessors.
         bool visible=false;Api quiet=api;quiet.trace=nullptr;
         for(const auto& entry:work) {
-            auto& row=*entry;const bool changed=row.state!=state;
+            auto& row=*entry;
+            if(delta>0&&delta<10)row.languageElapsed+=delta;
+            if(read&&row.languageElapsed>=1) {
+                row.languageElapsed=0;
+                hudlocale::fromPanel(quiet,row.panel.value,read,row.language);
+            }
+            const char* caption=read?hudlocale::label(row.language):label;
+            const bool stateChanged=row.state!=state;
+            const bool changed=stateChanged||row.caption!=caption||!row.ready;
             if(changed) {
                 Owned text(api),tf(api);Value color;color.type=4;
                 color.object=0xd2d5d1;
-                row.ready=set(api,row.row.value,"selected",boolean(state==1))&&set(api,row.row.value,"label",string(label))&&
+                row.ready=set(api,row.row.value,"selected",boolean(state==1))&&set(api,row.row.value,"label",string(caption))&&
                     get(api,row.row.value,"tfCont",text)&&get(api,text.value,"tf",tf)&&
-                    set(api,tf.value,"text",string(label))&&set(api,tf.value,"textColor",color);
+                    set(api,tf.value,"text",string(caption))&&set(api,tf.value,"textColor",color);
+                if(row.ready) {
+                    fitCaption(api,tf.value);
+                    if(read&&row.caption!=caption)trace(api,"locale.changed",row.language==hudlocale::Language::Russian?"ru":row.language==hudlocale::Language::French?"fr":"en",true);
+                    row.caption=caption;
+                }
                 row.state=state;
-                const bool icon=drawCruiseIcon(api,row.row.value,state);
-                trace(api,"icon.draw.end",state==1?"on":state==2?"error":"off",icon);
+                if(stateChanged) {
+                    const bool icon=drawCruiseIcon(api,row.row.value,state);
+                    trace(api,"icon.draw.end",state==1?"on":state==2?"error":"off",icon);
+                }
             }
             visible=(row.ready&&visibleOnStage(changed?api:quiet,row.panel.value))||visible;
         }

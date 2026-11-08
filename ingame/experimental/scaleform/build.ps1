@@ -36,6 +36,10 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Cruise icon test compilation failed.'}
     & (Join-Path $out 'CruiseIconTests.exe')
     if($LASTEXITCODE -ne 0){throw 'Cruise icon tests failed.'}
+    & "$Toolchain\g++.exe" @flags (Join-Path $root 'HudLocalizationTests.cpp') -o (Join-Path $out 'HudLocalizationTests.exe')
+    if($LASTEXITCODE -ne 0){throw 'HUD localisation test compilation failed.'}
+    & (Join-Path $out 'HudLocalizationTests.exe')
+    if($LASTEXITCODE -ne 0){throw 'HUD localisation tests failed.'}
     if($Autopilot){
         & "$Toolchain\g++.exe" @flags (Join-Path $root '..\..\tests\StateTests.cpp') -o (Join-Path $out 'StateTests.exe')
         if($LASTEXITCODE -ne 0){throw 'Control test compilation failed.'}

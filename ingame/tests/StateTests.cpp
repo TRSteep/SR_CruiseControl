@@ -42,6 +42,7 @@ int main() {
         toggle(); check(!key(vk, 0) && !state.active, "Menu key cancels");
     }
     toggle(); check(!key(0xd7, 0x11) && !state.active, "Physical W works with another keyboard layout");
+    key(0xd7, 0x11, 0x80);
     toggle(); check(!key(0xd8, 0x31) && !state.active, "Physical N works with another keyboard layout");
     accept = false; toggle();
     check(!state.active && state.inputFailed && !state.ownsThrottle, "Rejected down cannot activate");
@@ -104,5 +105,75 @@ int main() {
         autopilot::updateCruiseInput(state, controlEdge, input);
         check(!state.active && !state.ownsThrottle, "W/S/N/menu/focus still cancel while HUD is missing");
     }
+    // Regression: physical W -> F6 -> W autorepeats -> physical W-up.
+    // Model a raw-input release even if the low-level hook swallowed W-up.
+    bool gameThrottle=false,acceptDown=true,acceptUp=true;
+    unsigned handoffDowns=0,handoffUps=0;
+    autopilot::CruiseState handoff([&](bool held) {
+        if(held){++handoffDowns;if(!acceptDown)return false;}
+        else{++handoffUps;if(!acceptUp)return false;}
+        gameThrottle=held;return true;
+    });
+    autopilot::KeyboardPolicy handoffKeys(handoff,0);
+    autopilot::ToggleEdge handoffEdge;
+    autopilot::CruiseInput h;h.drivingHud=true;
+    auto pollHandoff=[&]{autopilot::updateCruiseInput(handoff,handoffEdge,h);};
+    handoffKeys.handle(0x57,0x11,0,true,false,false);gameThrottle=true;
+    h.toggle=true;pollHandoff();
+    check(handoff.active&&handoff.ownsThrottle&&gameThrottle,"F6 takes over an already-held physical W");
+    for(unsigned i=0;i<100;++i) {
+        check(!handoffKeys.handle(0x57,0x11,0,true,false,false)&&handoff.active,
+            "Autorepeat from the original W hold cannot cancel cruise");
+    }
+    h.toggle=false;pollHandoff();
+    check(handoffKeys.handle(0x57,0x11,0x80,true,false,false),"Physical release is swallowed while cruise owns throttle");
+    gameThrottle=false;const auto beforeRestore=handoffDowns;
+    h.throttleReleased=true;pollHandoff();h.throttleReleased=false;
+    check(handoff.active&&handoff.ownsThrottle&&!handoff.inputFailed&&gameThrottle&&handoffDowns==beforeRestore+1,
+        "After releasing W, both actual gas and active HUD state remain enabled");
+    for(unsigned i=0;i<100;++i)pollHandoff();
+    check(handoffDowns==beforeRestore+1,"An old release does not continually inject W-down");
+    check(!handoffKeys.handle(0x57,0x11,0,true,false,false)&&!handoff.active&&!handoff.ownsThrottle,
+        "The next distinct W press still takes manual control");
+    gameThrottle=true;const auto beforeManualUp=handoffUps;
+    h.throttleReleased=true;pollHandoff();h.throttleReleased=false;
+    check(gameThrottle&&handoffUps==beforeManualUp,"A queued old release cannot interrupt manual throttle");
+    check(!handoffKeys.handle(0x57,0x11,0x80,true,false,false),"Manual release reaches game after takeover");gameThrottle=false;
+    h.toggle=true;pollHandoff();
+    check(handoff.active&&gameThrottle,"A single fresh F6 enables cruise after manual takeover");
+    h.toggle=false;pollHandoff();h.toggle=true;pollHandoff();
+    check(!handoff.active&&!gameThrottle,"Next F6 still disables after the handoff");
+
+    // The fallback window route uses the same physical-edge tracker, and a
+    // swallowed hook release must reset it before the next hardware press.
+    autopilot::PhysicalThrottle windowW;
+    check(windowW.press()&&!windowW.press(),"Window route distinguishes fresh W from autorepeat");
+    windowW.release();check(windowW.press(),"Hook W-up also allows the next window W-down");
+    windowW.reset(true);check(!windowW.press(),"A physical W held when hooking starts is not a fresh press");
+    handoffKeys.resetThrottle(true);h={};h.drivingHud=true;pollHandoff();h.toggle=true;pollHandoff();
+    check(handoff.active&&!handoffKeys.handle(0x57,0x11,0,true,false,false)&&handoff.active,
+        "Starting the hook with W already held does not misclassify its first repeat");
+    handoffKeys.handle(0x57,0x11,0x80,true,false,false);
+    for(int reason=0;reason<5;++reason) {
+        handoff.cancel();h={};h.drivingHud=true;pollHandoff();h.toggle=true;pollHandoff();
+        check(handoff.active,"Activate before queued-release cancellation test");
+        h.toggle=false;pollHandoff();h.throttleReleased=true;
+        if(reason==0)h.brake=true;
+        if(reason==1)h.engine=true;
+        if(reason==2)h.focused=false;
+        if(reason==3)h.manual=true;
+        if(reason==4)h.toggle=true;
+        const auto downs=handoffDowns;pollHandoff();
+        check(!handoff.active&&handoffDowns==downs,"Brake/N/focus/new W/F6 take priority over deferred throttle restore");
+    }
+    h={};h.drivingHud=true;pollHandoff();h.toggle=true;pollHandoff();h.toggle=false;pollHandoff();
+    acceptDown=false;h.throttleReleased=true;pollHandoff();h.throttleReleased=false;
+    check(!handoff.active&&!handoff.ownsThrottle&&handoff.inputFailed&&!gameThrottle,
+        "Rejected restored W-down clears active state and releases gas instead of leaving a green HUD");
+    acceptDown=true;h.toggle=true;pollHandoff();h.toggle=false;pollHandoff();
+    acceptDown=acceptUp=false;h.throttleReleased=true;pollHandoff();
+    check(!handoff.active&&handoff.ownsThrottle&&handoff.inputFailed,"Failed restore/release retains cleanup obligation");
+    acceptDown=acceptUp=true;h.throttleReleased=false;pollHandoff();
+    check(!handoff.active&&!handoff.ownsThrottle&&!gameThrottle,"Deferred cleanup never reactivates cruise");
     std::printf("PASS: %d native state/input checks\n", checks);
 }

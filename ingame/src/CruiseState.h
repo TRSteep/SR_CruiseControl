@@ -1,7 +1,16 @@
 #pragma once
 #include <functional>
+#include <atomic>
 
 namespace autopilot {
+class PhysicalThrottle {
+    std::atomic<bool> held{false};
+public:
+    void reset(bool down) { held=down; }
+    bool press() { return !held.exchange(true); }
+    void release() { held=false; }
+};
+
 class ToggleEdge {
     bool held = false;
 public:
@@ -36,6 +45,14 @@ public:
         // Physical W-down takes ownership: do not send an artificial W-up.
         active = ownsThrottle = inputFailed = false;
     }
+    void restoreAfterPhysicalRelease() {
+        // Raw/async input can see the physical W-up despite a swallowed hook
+        // event. Reassert only an existing hold, never activate from a release.
+        if (!active || !ownsThrottle || send(true)) return;
+        active=false;
+        retryRelease();
+        inputFailed=true;
+    }
 };
 
 inline bool pollToggle(CruiseState& cruise, ToggleEdge& edge, bool down, bool focused, bool brake, bool modifiers) {
@@ -49,6 +66,7 @@ inline bool pollToggle(CruiseState& cruise, ToggleEdge& edge, bool down, bool fo
 struct CruiseInput {
     bool focused = true, drivingHud = false, brake = false, engine = false;
     bool cancel = false, manual = false, toggle = false, modifiers = false;
+    bool throttleReleased = false;
 };
 
 inline bool updateCruiseInput(CruiseState& cruise, ToggleEdge& edge, const CruiseInput& input) {
@@ -59,6 +77,7 @@ inline bool updateCruiseInput(CruiseState& cruise, ToggleEdge& edge, const Cruis
     const bool toggled = pollToggle(cruise, edge, input.toggle,
         input.focused && (cruise.active || input.drivingHud),
         input.brake || input.engine || input.cancel, input.modifiers);
+    if (input.throttleReleased) cruise.restoreAfterPhysicalRelease();
     cruise.retryRelease();
     return toggled;
 }
@@ -67,8 +86,10 @@ class KeyboardPolicy {
     CruiseState& cruise;
     unsigned toggleKey;
     bool toggleHeld = false;
+    PhysicalThrottle throttle;
 public:
     KeyboardPolicy(CruiseState& state, unsigned key) : cruise(state), toggleKey(key) {}
+    void resetThrottle(bool down) { throttle.reset(down); }
     bool handle(unsigned vk, unsigned scan, unsigned flags, bool game, bool brake, bool modifiers) {
         if (flags & 0x10) return false; // Ignore injected input, including our own.
         const bool up = (flags & 0x80) != 0;
@@ -82,7 +103,10 @@ public:
                 return true;
             }
         }
-        if (!up && scan == 0x11 && !(flags & 1)) cruise.manualThrottle();
+        if (scan == 0x11 && !(flags & 1)) {
+            if (up) throttle.release();
+            else if (throttle.press()) cruise.manualThrottle();
+        }
         if (!up && (scan == 0x1f || scan == 0x31)) cruise.cancel();
         if (!up && (vk == 0x1b || vk == 0x0d || vk == 0x70 || vk == 0x73 || scan == 0x32)) cruise.cancel();
         return up && scan == 0x11 && !(flags & 1) && cruise.active;

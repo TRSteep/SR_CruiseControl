@@ -53,11 +53,16 @@ int main() {
     check(!std::strcmp(probe::events[before+1].symbol,"TEST-await-brake-read") && nativeReads==0);
     probe::ui.get=missingPosition;
     check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
-    check(nativeReads==1 && !probe::insideUi && output.object==0x4321);
-    check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
-    check(nativeReads==1); // A failed native attempt must not repeat every frame.
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-    check(nativecontrol::label()=="АВТОПИЛОТ"&&nativecontrol::keyLabel()=="F6");
+    constexpr unsigned expectedReads=2; // Optional language read, then position.
+#else
+    constexpr unsigned expectedReads=1;
+#endif
+    check(nativeReads==expectedReads && !probe::insideUi && output.object==0x4321);
+    check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
+    check(nativeReads==expectedReads); // A failed native attempt must not repeat every frame.
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    check(nativecontrol::label()=="CRUISE CONTROL"&&nativecontrol::keyLabel()=="F6");
     nativecontrol::toggleKey=VK_F7;check(nativecontrol::keyLabel()=="F7");nativecontrol::toggleKey=VK_F6;
     probe::originalAdvance=fakeAdvance;probe::originalDestroy=fakeDestroy;
     check(probe::advanceHook(reinterpret_cast<void*>(1),.125f,2,true)==3.125f);

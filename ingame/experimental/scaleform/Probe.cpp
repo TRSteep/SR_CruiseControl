@@ -45,7 +45,8 @@ Advance originalAdvance=nullptr;
 Destroy originalDestroy=nullptr;
 // Keep the registry allocated until process exit. Normal Movie destruction
 // releases its entries before the VM dies; no C++ global destructor calls it.
-nativeui::Session& sessions=*new nativeui::Session(ui);
+bool read(const void* from,void* to,size_t bytes);
+nativeui::Session& sessions=*new nativeui::Session(ui,read);
 std::atomic<unsigned> nativeFrames{0};
 void registerRow(const ObservedValue& panel,const ObservedValue& row);
 #endif
@@ -107,7 +108,7 @@ float advanceHook(void* movie,float delta,unsigned catchUp,bool capture) {
         ++nativeFrames;
         insideUi=true;
         const auto label=nativecontrol::label();
-        nativecontrol::hudVisible=sessions.tick(movie,nativecontrol::state.load(),label.c_str());
+        nativecontrol::hudVisible=sessions.tick(movie,nativecontrol::state.load(),label.c_str(),delta);
         nativecontrol::hudStamp=GetTickCount64();
         insideUi=false;
     }
@@ -183,7 +184,9 @@ bool getHook(void* interfacePointer, void* parent, const char* name, ObservedVal
             panel.type=0x4a; panel.interfacePointer=reinterpret_cast<uintptr_t>(interfacePointer); panel.object=identity;
             insideUi=true;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-            const auto label=nativecontrol::label();
+            auto language=hudlocale::Language::English;
+            hudlocale::fromBrake(ui,brake,read,language);
+            const std::string label=hudlocale::label(language);
             const auto keyLabel=nativecontrol::keyLabel();
             const nativeui::RowOptions options{label.c_str(),48,registerRow,keyLabel.c_str(),true};
             const auto stage=nativeui::addTestRowToPanel(ui,panel,brake,options);

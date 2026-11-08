@@ -102,6 +102,15 @@ inline bool empty(const Api& api,const Value& parent,Owned& out,const char* inst
     trace(api,"sprite.end",instance,okay); return okay && object(out.value);
 }
 enum class Stage : unsigned { NoPanel=1,NoBrake,NoPosition,Existing,CreateFailed,BuildFailed,Created };
+inline void fitCaption(const Api& api,const Value& field) {
+    Owned measured(api);double width=0;
+    // Text starts at x=19; the icon starts at x=162. Reserve a 7-unit gap.
+    if(get(api,field,"textWidth",measured)&&asNumber(measured.value,width)&&width>0&&width<4096) {
+        width+=4; // TextField's internal horizontal padding.
+        set(api,field,"width",number(width));
+        set(api,field,"scaleX",number(width>136?136/width:1));
+    }
+}
 struct RowOptions {
     const char* label = "TEST";
     double step = 96;
@@ -136,6 +145,7 @@ inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& br
         set(api,row.value,"visible",boolean(false));
         return Stage::BuildFailed;
     }
+    if(options.cruiseIcon)fitCaption(api,tf.value);
     // The test row has no handbrake action or key binding. Suppress the
     // inherited brake glyph and key badge instead of suggesting that it does.
     for (const char* child : {"iconContainer","buttonAttach"}) {

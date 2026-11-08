@@ -7,6 +7,14 @@
 namespace {
 unsigned checks=0,sets=0;int references=0;bool hidden=false,offStage=false,cycle=false,failColor=false;
 uintptr_t color=0;bool selected=false;std::string label;
+const char* languageText=nullptr;double measuredWidth=0,fieldWidth=0,fieldScale=0;
+bool readText(const void* from,void* to,size_t size) {
+    if(!languageText)return false;
+    const auto start=reinterpret_cast<uintptr_t>(languageText),address=reinterpret_cast<uintptr_t>(from);
+    const auto length=std::strlen(languageText)+1;
+    if(address<start||address-start>length||size>length-(address-start))return false;
+    std::memcpy(to,from,size);return true;
+}
 std::unordered_set<nativeui::Value*> registered;
 void check(bool b){++checks;if(!b){std::fprintf(stderr,"FAIL session check %u\n",checks);std::exit(1);}}
 nativeui::Value object(uintptr_t id){nativeui::Value v;v.type=0x4a;v.interfacePointer=0x100;v.object=id;return v;}
@@ -20,6 +28,9 @@ bool get(void*,void* parent,const char* name,nativeui::Value* out,bool){
     if(!std::strcmp(name,"parent")){if(cycle)acquire(out,id);else out->type=1;return true;}
     if(!std::strcmp(name,"tfCont")){acquire(out,6);return true;}
     if(id==6&&!std::strcmp(name,"tf")){acquire(out,7);return true;}
+    if(!std::strcmp(name,"brakeBtn")){acquire(out,8);return true;}
+    if(id==7&&!std::strcmp(name,"text")&&languageText){*out=nativeui::string(languageText);return true;}
+    if(id==7&&!std::strcmp(name,"textWidth")&&measuredWidth){*out=nativeui::number(measuredWidth);return true;}
     return false;
 }
 bool set(void*,void*,const char* name,const nativeui::Value* value,bool){
@@ -27,6 +38,8 @@ bool set(void*,void*,const char* name,const nativeui::Value* value,bool){
     if(!std::strcmp(name,"selected"))selected=value->object!=0;
     if(!std::strcmp(name,"label"))label=reinterpret_cast<const char*>(value->object);
     if(!std::strcmp(name,"textColor")){color=value->object;return !failColor;}
+    if(!std::strcmp(name,"width"))check(nativeui::asNumber(*value,fieldWidth));
+    if(!std::strcmp(name,"scaleX"))check(nativeui::asNumber(*value,fieldScale));
     return true;
 }
 void retain(void* iface,nativeui::Value* value,void* data){check(iface==reinterpret_cast<void*>(0x100)&&data==reinterpret_cast<void*>(value->object));pin(value);}
@@ -51,5 +64,27 @@ int main(){
     for(uintptr_t i=0;i<17;++i)session.add(movie,object(1000+i),object(2000+i));
     check(references==32);session.drop(movie);check(references==0);
     check(registered.empty());
+    nativeui::Session localized(api,readText);
+    localized.add(movie,object(2),object(4));
+    languageText="РУЧНОЙ ТОРМОЗ";measuredWidth=120;
+    check(localized.tick(movie,1,"fallback",.01f)&&label=="КРУИЗ КОНТРОЛЬ"&&selected&&color==0xd2d5d1);
+    check(fieldWidth==124&&fieldScale==1);
+    languageText="FREIN À MAIN";measuredWidth=240;
+    check(localized.tick(movie,1,"fallback",.2f)&&label=="КРУИЗ КОНТРОЛЬ");
+    check(localized.tick(movie,1,"fallback",1)&&label=="RÉGULATEUR DE VITESSE"&&selected);
+    check(fieldWidth==244&&fieldScale==136.0/244);
+    languageText=nullptr;
+    check(localized.tick(movie,1,"fallback",1)&&label=="RÉGULATEUR DE VITESSE"&&selected);
+    languageText="UI_HUD_HANDBRAKE_INDICATOR";
+    check(localized.tick(movie,1,"fallback",1)&&label=="RÉGULATEUR DE VITESSE");
+    languageText="HANDBREMSE";measuredWidth=90;
+    check(localized.tick(movie,1,"fallback",1)&&label=="CRUISE CONTROL"&&selected);
+    check(fieldScale==1); // Restore normal width after the longer language.
+    languageText="  Ручной тормоз\n";
+    check(localized.tick(movie,0,"fallback",1)&&label=="КРУИЗ КОНТРОЛЬ"&&!selected);
+    failColor=true;
+    check(!localized.tick(movie,2,"fallback",1));failColor=false;
+    check(localized.tick(movie,2,"fallback",.01f)); // Retry failed UI update.
+    localized.drop(movie);check(registered.empty()&&references==0);
     std::printf("PASS: %u native session ownership/visibility/state checks\n",checks);
 }
