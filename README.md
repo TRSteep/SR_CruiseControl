@@ -15,7 +15,7 @@ There are two variants — choose the one you need:
 
 | Version | How it works | Documentation |
 | --- | --- | --- |
-| **Standalone 1.0.1** | A separate portable utility with a tray icon. No installation or modification of game files required; must be launched before the game. More stable, as game updates affect the GUI. | [Standalone README](standalone/README.md)|
+| **Standalone** | A separate portable utility with a tray icon. No installation or modification of game files required; must be launched before the game. More stable, as game updates affect the GUI. | [README](standalone/README.md)|
 | **HUD** | An embeddable mod: loads together with the game, graphics styled like the stock interface. Game updates and other mods may affect compatibility. Includes an installer and a manual package. | [HUD README](ingame/README.md) |
 
 -----------------------
@@ -33,5 +33,5 @@ There are two variants — choose the one you need:
 
 | Вариант | Запуск и особенности | Документация |
 | --- | --- | --- |
-| **Standalone 1.0.1** | Отдельная переносимая утилита со значком в трее. Установка и изменение файлов игры не требуются; Необходимо запускать перед игрой. Более стабильная, при обновлениях игры затрагивающее GUI. | [README Standalone](standalone/README.md) |
+| **Standalone** | Отдельная переносимая утилита со значком в трее. Установка и изменение файлов игры не требуются; Необходимо запускать перед игрой. Более стабильная, при обновлениях игры затрагивающее GUI. | [README](standalone/README.md) |
 | **HUD** | Встраиваемый мод: загружается вместе с игрой, графика оформлена как штатный интерфейс. Обновления игры и другие моды могут влиять на совместимость. Есть установщик и ручной пакет. | [README HUD](ingame/README.md)|
