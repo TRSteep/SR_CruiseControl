@@ -183,7 +183,8 @@ bool getHook(void* interfacePointer, void* parent, const char* name, ObservedVal
             insideUi=true;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
             const auto label=nativecontrol::label();
-            const nativeui::RowOptions options{label.c_str(),48,registerRow};
+            const auto keyLabel=nativecontrol::keyLabel();
+            const nativeui::RowOptions options{label.c_str(),48,registerRow,keyLabel.c_str()};
             const auto stage=nativeui::addTestRowToPanel(ui,panel,brake,options);
 #else
             const auto stage=nativeui::addTestRowToPanel(ui,panel,brake);
@@ -262,7 +263,7 @@ DWORD WINAPI run(void*) {
 #endif
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-    std::fprintf(log,"Native Scaleform autopilot 9; enabled=%u; F-key=%u; stable managed values; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
+    std::fprintf(log,"Native Scaleform autopilot 10; enabled=%u; F-key=%u; native key badge; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
 #else
     std::fprintf(log, "Scaleform diagnostic probe 7; TEST=%u (native row attached to library-backed panel); no AS3 Invoke or input writes.\n",enableTestRow);
 #endif

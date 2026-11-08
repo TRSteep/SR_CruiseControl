@@ -104,6 +104,7 @@ struct RowOptions {
     const char* label = "TEST";
     double step = 96;
     void (*created)(const Value& panel,const Value& row) = nullptr;
+    const char* keyLabel = nullptr;
 };
 // Candidate entry point after the game's own brakeBtn read has returned.
 // This is not yet validated in a live driving HUD. Never call from creation.
@@ -138,6 +139,19 @@ inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& br
         Owned decoration(api);
         if (get(api,row.value,child,decoration) && object(decoration.value))
             set(api,decoration.value,"visible",boolean(false));
+    }
+    if(options.keyLabel) {
+        // This authored slot already has x=207, y=8 and scale=.75, matching
+        // the game's brake/AWD/diff key hints. Use the original MC_PC artwork.
+        Owned slot(api),key(api),keyText(api);
+        const bool badge=get(api,row.value,"buttonAttach",slot)&&object(slot.value)&&
+            attach(api,slot.value,key,"MC_PC","srAutopilotKey")&&
+            set(api,key.value,"x",number(0))&&set(api,key.value,"y",number(0))&&
+            get(api,key.value,"textField",keyText)&&object(keyText.value)&&
+            set(api,keyText.value,"text",string(options.keyLabel))&&
+            set(api,slot.value,"visible",boolean(true));
+        if(!badge&&object(slot.value))set(api,slot.value,"visible",boolean(false));
+        trace(api,"keybadge.end",options.keyLabel,badge);
     }
     if (options.created) options.created(panel,row.value);
     return Stage::Created;

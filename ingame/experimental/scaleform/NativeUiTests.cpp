@@ -2,10 +2,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <string>
 
 namespace {
 unsigned checks=0; int references=0; unsigned emptyCalls=0, removals=0, mouseDisabled=0;
 unsigned invokeCalls=0,hiddenRows=0,attachCalls=0,hiddenDecorations=0;
+unsigned badgeCalls=0;bool badgeVisible=false,failBadge=false;std::string keyCaption;
 bool missingPanel=false, failText=false, duplicate=false;
 double rowY=0; bool wroteTest=false;
 unsigned traceBegins=0,traceEnds=0,failedCalls=0;
@@ -28,6 +30,7 @@ bool get(void*,void* parent,const char* name,nativeui::Value* out,bool isDisplay
     else if (id==4 && !std::strcmp(name,"tfCont")) acquire(out,6);
     else if (id==4 && !std::strcmp(name,"iconContainer")) acquire(out,8);
     else if (id==4 && !std::strcmp(name,"buttonAttach")) acquire(out,9);
+    else if (id==10 && !std::strcmp(name,"textField")) acquire(out,11);
     else if (id==6 && !std::strcmp(name,"tf")) { if (failText) return false; acquire(out,7); }
     else return false;
     return true;
@@ -39,7 +42,12 @@ bool set(void*,void* parent,const char* name,const nativeui::Value* value,bool i
         check(nativeui::type(*value)==2 && value->object==0); ++mouseDisabled;
     }
     if (id==4 && !std::strcmp(name,"visible")) { check(nativeui::type(*value)==2 && value->object==0); ++hiddenRows; }
-    if ((id==8 || id==9) && !std::strcmp(name,"visible")) { check(nativeui::type(*value)==2 && value->object==0); ++hiddenDecorations; }
+    if ((id==8 || id==9) && !std::strcmp(name,"visible")) {
+        check(nativeui::type(*value)==2);
+        if(!value->object)++hiddenDecorations;
+        if(id==9)badgeVisible=value->object!=0;
+    }
+    if(id==11&&!std::strcmp(name,"text")){check(nativeui::type(*value)==6);keyCaption=reinterpret_cast<const char*>(value->object);}
     if (id==7 && !std::strcmp(name,"text")) { check(nativeui::type(*value)==6); wroteTest=!std::strcmp(reinterpret_cast<const char*>(value->object),"TEST"); }
     return true;
 }
@@ -59,6 +67,10 @@ void release(void* iface,nativeui::Value* value,void* data) {
     check(iface==reinterpret_cast<void*>(0x100) && data==reinterpret_cast<void*>(value->object)); --references; check(references>=0);
 }
 bool attach(void*,void* parent,nativeui::Value* out,const char* symbol,const char* instance,int depth,const void* init) {
+    if(parent==reinterpret_cast<void*>(9)) {
+        check(!std::strcmp(symbol,"MC_PC")&&!std::strcmp(instance,"srAutopilotKey")&&depth==-1&&init==nullptr);
+        ++badgeCalls;if(failBadge)return false;acquire(out,10);return true;
+    }
     check(parent==reinterpret_cast<void*>(2) && depth==-1 && init==nullptr);
     check(!std::strcmp(symbol,"hudBrakeBtn") && !std::strcmp(instance,"srAutopilotProbe"));
     ++attachCalls; acquire(out,4);
@@ -81,5 +93,11 @@ int main() {
     check(references==0 && emptyCalls==0 && attachCalls==2);
     check(traceBegins==traceEnds && traceBegins>0 && failedCalls==1);
     check(invokeCalls==0);
+    missingPanel=false;const nativeui::RowOptions options{"TEST",48,nullptr,"F6"};
+    check(nativeui::addTestRowToPanel(api,object(2),object(3),options)==nativeui::Stage::Created);
+    check(keyCaption=="F6"&&badgeVisible&&badgeCalls==1&&references==0&&std::abs(rowY+40)<.001);
+    failBadge=true;
+    check(nativeui::addTestRowToPanel(api,object(2),object(3),options)==nativeui::Stage::Created);
+    check(!badgeVisible&&references==0&&invokeCalls==0);
     std::printf("PASS: %u native UI ABI/lifetime/rollback checks\n",checks);
 }

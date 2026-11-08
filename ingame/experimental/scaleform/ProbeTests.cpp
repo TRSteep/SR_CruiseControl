@@ -57,6 +57,8 @@ int main() {
     check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
     check(nativeReads==1); // A failed native attempt must not repeat every frame.
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
+    check(nativecontrol::label()=="АВТОПИЛОТ"&&nativecontrol::keyLabel()=="F6");
+    nativecontrol::toggleKey=VK_F7;check(nativecontrol::keyLabel()=="F7");nativecontrol::toggleKey=VK_F6;
     probe::originalAdvance=fakeAdvance;probe::originalDestroy=fakeDestroy;
     check(probe::advanceHook(reinterpret_cast<void*>(1),.125f,2,true)==3.125f);
     check(probe::destroyHook(reinterpret_cast<void*>(1),1)==1);

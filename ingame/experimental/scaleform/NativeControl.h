@@ -61,5 +61,6 @@ inline DWORD WINAPI inputThread(void* value){
     cruise.cancel();publish("shutdown");if(hook)UnhookWindowsHookEx(hook);return 0;
 }
 inline void shutdown(){stop=true;if(owns.load())send(false);}
-inline std::string label(){char key[16]{};std::snprintf(key,sizeof(key)," [F%u]",toggleKey-VK_F1+1);return std::string("АВТОПИЛОТ")+key;}
+inline std::string label(){return "АВТОПИЛОТ";}
+inline std::string keyLabel(){char key[16]{};std::snprintf(key,sizeof(key),"F%u",toggleKey-VK_F1+1);return key;}
 }
