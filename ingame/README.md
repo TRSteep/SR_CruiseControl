@@ -1,6 +1,6 @@
 # SnowRunner Cruise control (SnowRunner CC) — HUD
 
-**Версия исходников: 1.1.5. Последний готовый релиз: [HUD 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4).** Версия 1.1.5 с исправлением скрытия строки доступна в исходниках; отдельный релиз с её файлами ещё не опубликован.
+**Текущий релиз: [HUD 1.1.5](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.5).** Включает исправление скрытия строки вместе со штатным HUD, проверенное пользователем, и установщик.
 
 Нативный ASI-мод для Windows x64. Загружается вместе с SnowRunner и добавляет строку «КРУИЗ КОНТРОЛЬ» на один шаг выше ручника внутри штатного Scaleform HUD. Фон, шрифт, наклон и движение используются из игры. Значок спидометра справа становится зелёным при включении, надпись остаётся светлой. Клавиша F6 отображается отдельным штатным квадратиком.
 
@@ -15,14 +15,14 @@
 ## Установка готового релиза
 
 1. Закройте SnowRunner.
-2. Скачайте [установщик HUD 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/download/ingame-v1.1.4/SnowRunnerCC-HUD-1.1.4-Setup.exe) или ZIP установщика из [Assets релиза](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4).
+2. Скачайте [установщик HUD 1.1.5](https://github.com/TRSteep/SR_CruiseControl/releases/download/ingame-v1.1.5/SnowRunnerCC-HUD-1.1.5-Setup.exe) или ZIP установщика из [Assets релиза](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.5).
 3. Выберите папку игры или папку с `SnowRunner.exe`. Обычно это `<папка игры>/en_us/Sources/Bin`.
 4. Нажмите **Install / update / Установить / обновить**. При необходимости мастер предложит перезапуск с правами администратора.
 5. Запустите SnowRunner обычным способом.
 
 Установщик сохраняет INI, создаёт резервные копии, отключает прежние overlay/test ASI и не заменяет неизвестный `dinput8.dll`. Он не подписан цифровой подписью. Для другого совместимого x64 ASI-загрузчика используйте [ручную установку](INSTALL_NATIVE.md). Подписка в игровом браузере mod.io этот ASI не устанавливает.
 
-Для версии **1.1.5** соберите мод и установщик по инструкции ниже. Установщик появится в `build/installer/1.1.5/SnowRunnerCC-HUD-1.1.5-Setup.exe`.
+Исходники версии **1.1.5** можно собрать по инструкции ниже. Результат установщика — `build/installer/1.1.5/SnowRunnerCC-HUD-1.1.5-Setup.exe`.
 
 ## Управление
 
@@ -77,6 +77,6 @@ ASI: `build/scaleform-probe/SnowRunnerNativeAutopilot.asi`. Установщик
 
 Актуальные исходники находятся в `experimental/scaleform`; общий контроллер — `src/CruiseState.h`. Корневые `build.ps1` и `install.ps1` в этой папке относятся к прежнему DirectX-наложению и не собирают текущий HUD. [Техническая документация](experimental/scaleform/README.md), [установщик](installer/README.md), [список изменений](CHANGELOG.md).
 
-Автоматические проверки покрывают управление, ABI/ссылки, локализацию и видимость. Базовый HUD проверен пользователем в игре; живая проверка скрытия/возврата в версии 1.1.5 пока не подтверждена.
+Автоматические проверки покрывают управление, ABI/ссылки, локализацию и видимость. Базовый HUD проверен пользователем в игре; пользователь подтвердил скрытие/возврат HUD и работу разных языков в версии 1.1.5.
 
 В пакеты включены лицензии [MinHook](vendor/minhook-1.3.4/LICENSE.txt) и [Ultimate ASI Loader](vendor/asi-loader-v10.0.2/LICENSE.txt). Игровые GFX, шрифты и текстуры не распространяются. [Публикация на mod.io](MODIO_PUBLISH_RU.md), [английское описание страницы](MODIO_DESCRIPTION_EN.md).

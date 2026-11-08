@@ -6,7 +6,7 @@ Hold full throttle without holding W. Toggle with F6; press W to take over manua
 
 The control appears inside SnowRunner's native Scaleform HUD above the handbrake row. It follows the original HUD animation and visibility. The speedometer icon turns green when enabled; the label remains light and the F6 hint uses a separate native key badge.
 
-HUD labels follow the game's handbrake language: Russian, English and French are included; other languages use English. Keyboard layout and Windows language do not select the HUD language. The new language switching has automated coverage; switching all three languages in a live game has not yet been verified.
+HUD labels follow the game's handbrake language: Russian, English and French are included; other languages use English. Keyboard layout and Windows language do not select the HUD language. Language switching has automated coverage and the user confirmed operation with different game languages.
 
 If W is already held, press F6 and then release W: cruise takes over and keeps the throttle held. Autorepeat from the original W hold is ignored. The next distinct W press takes manual control; other cancellation keys retain their behaviour.
 
@@ -17,7 +17,7 @@ If W is already held, press F6 and then release W: cruise takes over and keeps t
 - Use physical W for throttle and S for brake. Gamepad/wheel input and switching the engine off with a mouse are not tracked.
 - Changing focus or pressing Esc/Enter/M/F1/F4 cancels throttle. Returning to the game does not re-enable it.
 
-Version 1.1.5 is currently a local build and has not yet been published. It adds HUD visibility synchronisation: hiding the game HUD hides the entire cruise row, icon and F-key hint; showing the HUD restores them without changing throttle state.
+Version 1.1.5 adds HUD visibility synchronisation, verified in-game by the user: hiding the game HUD hides the entire cruise row, icon and F-key hint; showing the HUD restores them without changing throttle state.
 
 ## Installation
 
@@ -35,7 +35,7 @@ Run the installer again to update. Your INI is preserved. **Remove HUD** removes
 
 Version: **HUD 1.1.5**. The installer is unsigned. Installation/update/removal/rollback and payload checks are automated; a full interactive installer run on every supported Windows configuration is not claimed.
 
-[Source code](https://github.com/TRSteep/SR_CruiseControl) · [Latest published HUD release: 1.1.4 (without the HUD-toggle fix)](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4)
+[Source code](https://github.com/TRSteep/SR_CruiseControl) · [HUD 1.1.5 release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.5)
 
 Report issues with the game store/build, HUD version and `SnowRunnerNativeAutopilot.log`. Do not include account tokens or save files.
 

@@ -13,7 +13,7 @@ Choose one version:
 | Version | How it works | Documentation |
 | --- | --- | --- |
 | **Standalone 1.0.1** | Separate portable application with a tray icon. No changes to game files; start it before playing. It does not depend on an exact EXE hash, although game updates may still affect input compatibility. | [Standalone README](standalone/README.md) · [Release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) |
-| **HUD** | Loads with the game and adds a row to its native interface. Requires the supported game executable; updates and other mods can affect compatibility. | [HUD README](ingame/README.md) · [Release 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) |
+| **HUD** | Loads with the game and adds a row to its native interface. Requires the supported game executable; updates and other mods can affect compatibility. | [HUD README](ingame/README.md) · [Release 1.1.5](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.5) |
 
 -----------------------
 ## Русский
@@ -29,6 +29,6 @@ Choose one version:
 | Вариант | Запуск и особенности | Документация |
 | --- | --- | --- |
 | **Standalone 1.0.1** | Отдельная переносимая утилита со значком в трее. Установка и изменение файлов игры не требуются; запускать перед игрой. Нет привязки к точному хешу EXE, но совместимость ввода после обновлений всё равно требует проверки. | [README Standalone](standalone/README.md) · [Релиз](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) |
-| **HUD** | Встраиваемый мод: загружается вместе с игрой, строка оформлена как штатный интерфейс. Нужна поддержанная сборка EXE; обновления игры и другие моды могут влиять на совместимость. Есть установщик и ручной пакет. | [README HUD](ingame/README.md) · [Релиз 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) |
+| **HUD** | Встраиваемый мод: загружается вместе с игрой, строка оформлена как штатный интерфейс. Нужна поддержанная сборка EXE; обновления игры и другие моды могут влиять на совместимость. Есть установщик и ручной пакет. | [README HUD](ingame/README.md) · [Релиз 1.1.5](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.5) |
 
 Подробные инструкции запуска, настройки, обновления и сборки находятся в отдельных README каждого проекта. История нативной интеграции — [Scaleform integration analysis](docs/scaleform-integration-analysis.md).
