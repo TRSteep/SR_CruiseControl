@@ -199,7 +199,7 @@ DWORD WINAPI run(void*) {
     enableTestRow = GetPrivateProfileIntW(L"Probe",L"EnableTestRow",0,configPath.c_str()) == 1;
     logPath += L"SnowRunnerScaleformProbe.log";
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
-    std::fprintf(log, "Scaleform diagnostic probe 5; TEST=%u (after game-owned brakeBtn read); traced UI calls; no input writes.\n",enableTestRow); std::fflush(log);
+    std::fprintf(log, "Scaleform diagnostic probe 6; TEST=%u (after game-owned brakeBtn read); no AS3 Invoke or input writes.\n",enableTestRow); std::fflush(log);
     char hash[65]{};
     const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!hashExe(hash) || std::strcmp(hash, expectedHash) || !compatible(image) || !bindUi(image)) {

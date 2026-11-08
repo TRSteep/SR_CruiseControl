@@ -32,7 +32,7 @@ try {
         New-Item -ItemType Directory -Path $packageDir -Force | Out-Null
         Copy-Item -LiteralPath (Join-Path $out 'SnowRunnerScaleformProbe.asi'),(Join-Path $root 'SnowRunnerScaleformProbe.ini'),(Join-Path $root 'README.md') -Destination $packageDir
         Copy-Item -LiteralPath (Join-Path $minhook 'LICENSE.txt') -Destination (Join-Path $packageDir 'MinHook-LICENSE.txt')
-        $archive=Join-Path $out 'SnowRunner-Scaleform-Prototype-v5.zip'
+        $archive=Join-Path $out 'SnowRunner-Scaleform-Prototype-v6.zip'
         $packageFiles=@('SnowRunnerScaleformProbe.asi','SnowRunnerScaleformProbe.ini','README.md','MinHook-LICENSE.txt') | ForEach-Object { Join-Path $packageDir $_ }
         Compress-Archive -LiteralPath $packageFiles -DestinationPath $archive -Force
         Write-Output "Packaged: $archive"

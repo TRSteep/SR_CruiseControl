@@ -5,6 +5,7 @@
 
 namespace {
 unsigned checks=0; int references=0; unsigned emptyCalls=0, removals=0, mouseDisabled=0;
+unsigned invokeCalls=0,hiddenRows=0;
 bool missingPanel=false, failText=false, duplicate=false;
 double rowY=0; bool wroteTest=false;
 unsigned traceBegins=0,traceEnds=0,failedCalls=0;
@@ -34,10 +35,12 @@ bool set(void*,void* parent,const char* name,const nativeui::Value* value,bool i
     if (id==4 && (!std::strcmp(name,"mouseEnabled") || !std::strcmp(name,"mouseChildren"))) {
         check(nativeui::type(*value)==2 && value->object==0); ++mouseDisabled;
     }
+    if (id==4 && !std::strcmp(name,"visible")) { check(nativeui::type(*value)==2 && value->object==0); ++hiddenRows; }
     if (id==7 && !std::strcmp(name,"text")) { check(nativeui::type(*value)==6); wroteTest=!std::strcmp(reinterpret_cast<const char*>(value->object),"TEST"); }
     return true;
 }
 bool invoke(void*,void* parent,nativeui::Value* result,const char* name,const nativeui::Value* args,unsigned count,bool isDisplay) {
+    ++invokeCalls;
     check(isDisplay && count==1); const auto id=reinterpret_cast<uintptr_t>(parent);
     if (id==2 && !std::strcmp(name,"getChildByName")) {
         check(!std::strcmp(reinterpret_cast<const char*>(args->object),"srAutopilotProbe"));
@@ -67,12 +70,13 @@ int main() {
     nativeui::Api api{get,set,invoke,release,attach,empty,trace};
     check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::Created);
     check(references==0 && emptyCalls==1 && removals==0 && mouseDisabled==2 && wroteTest && std::abs(rowY+88)<.001);
-    duplicate=true; check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::Existing);
+    duplicate=true; check(nativeui::addTestRowToPanel(api,object(2),nativeui::Value{})==nativeui::Stage::NoBrake);
     check(references==0 && emptyCalls==1); duplicate=false;
     failText=true; check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::BuildFailed);
-    check(references==0 && removals==1); failText=false;
+    check(references==0 && removals==0 && hiddenRows==1); failText=false;
     missingPanel=true; check(nativeui::addTestRowToPanel(api,nativeui::Value{},object(3))==nativeui::Stage::NoPanel);
     check(references==0 && emptyCalls==2);
     check(traceBegins==traceEnds && traceBegins>0 && failedCalls==1);
+    check(invokeCalls==0);
     std::printf("PASS: %u native UI ABI/lifetime/rollback checks\n",checks);
 }

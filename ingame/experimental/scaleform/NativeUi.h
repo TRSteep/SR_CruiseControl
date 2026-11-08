@@ -91,26 +91,24 @@ enum class Stage : unsigned { NoPanel=1,NoBrake,NoPosition,Existing,CreateFailed
 inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& brake) {
     if (!object(panel)) return Stage::NoPanel;
     if (!object(brake)) return Stage::NoBrake;
-    Owned x(api),y(api),existing(api);
+    // The caller gates this to one attempt per parent. Do not Invoke AS3
+    // methods here: getChildByName did not return in the live v5 test.
+    Owned x(api),y(api);
     double px=0,py=0;
     if (!get(api,brake,"x",x) || !get(api,brake,"y",y) ||
         !asNumber(x.value,px) || !asNumber(y.value,py)) return Stage::NoPosition;
-    const Value name = string("srAutopilotProbe");
-    if (!call(api,panel,"getChildByName",&name,1,existing)) return Stage::CreateFailed;
-    if (object(existing.value)) return Stage::Existing;
-    Owned row(api),bg(api),text(api),tf(api),stopped(api);
+    Owned row(api),bg(api),text(api),tf(api);
     if (!empty(api,panel,row,"srAutopilotProbe")) return Stage::CreateFailed;
-    const Value off = string("none");
     const bool built = set(api,row.value,"x",number(px)) && set(api,row.value,"y",number(py-96)) &&
         set(api,row.value,"mouseEnabled",boolean(false)) && set(api,row.value,"mouseChildren",boolean(false)) &&
         attach(api,row.value,bg,"hudBtnBg","srProbeBg") &&
-        call(api,bg.value,"gotoAndStop",&off,1,stopped) &&
         attach(api,row.value,text,"hudBtnText","srProbeText") &&
         set(api,text.value,"x",number(15)) && set(api,text.value,"y",number(6)) &&
         get(api,text.value,"tf",tf) && object(tf.value) && set(api,tf.value,"text",string("TEST"));
     if (!built) {
-        Owned removed(api);
-        call(api,panel,"removeChild",&row.value,1,removed);
+        // Keep a failed child invisible until the HUD destroys its display
+        // list. Avoid removeChild/Invoke on the unverified method-call ABI.
+        set(api,row.value,"visible",boolean(false));
         return Stage::BuildFailed;
     }
     return Stage::Created;
