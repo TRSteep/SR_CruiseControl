@@ -1,37 +1,41 @@
-# SnowRunner Cruise Control
+# SnowRunner Cruise control (SnowRunner CC)
 
-Два самостоятельных проекта для удержания газа в SnowRunner на Windows x64.
+Удержание газа в SnowRunner для Windows x64. Два варианта с отдельными версиями и инструкциями:
 
-| Проект | Запуск | Результат сборки |
-| --- | --- | --- |
-| [Нативный внутриигровой мод](ingame/INSTALL_NATIVE.md) | Штатный Scaleform HUD, отдельный квадратик F6, загрузка вместе с игрой | `SnowRunnerNativeAutopilot.asi` |
-| [Отдельная утилита](standalone/README.md) | EXE со своей иконкой и значком в трее | `standalone/dist/SnowRunnerCruiseControl.exe` |
+| Вариант | Текущая версия | Запуск | Установка |
+| --- | --- | --- | --- |
+| SnowRunner CC HUD | [1.1.2](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.2) | Загружается вместе с игрой, строка внутри штатного Scaleform HUD | [HUD](ingame/INSTALL_NATIVE.md) |
+| SnowRunner CC standalone | [1.0.1](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) | Отдельный EXE со значком в трее | [Standalone](standalone/README.md) |
 
-**F6** включает и выключает удержание газа, **W/S/N** отключают его. Это полный газ, а не поддержание заданной скорости. Выберите один вариант; одновременно запускать оба не нужно.
+Полное название приложения — **SnowRunner Cruise control**, сокращённое — **SnowRunner CC**. HUD 1.1.2 и standalone 1.0.1 обновляют название и документацию; логика управления сохранена.
 
-## Внутриигровой мод
+**F6** включает и выключает удержание полного газа, **W/S/N** отключают его. Это удержание газа, а не поддержание заданной скорости или движение по маршруту. Выберите один вариант; одновременно использовать оба не нужно.
 
-Текущая версия — **[1.1.1: нативный HUD со значком круиз-контроля](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.1)**. [Инструкция установки и обновления](ingame/INSTALL_NATIVE.md). При включении зелёным становится значок, текст остаётся светлым; F6 отображается отдельным штатным квадратиком. В готовом ZIP есть ASI, настройки, x64 ASI-загрузчик и лицензии. При переходе с 1.0.0 отключите `SnowRunnerAutopilot.asi`, чтобы старая накладка не загружалась параллельно.
+## SnowRunner CC HUD 1.1.2
 
-Работа подтверждена в Epic Games, SnowRunner 44.1. Для сборки нужны Windows x64 и MSYS2 UCRT64 GCC. Из PowerShell в корне репозитория:
+Штатная строка «АВТОПИЛОТ» над ручником: векторный спидометр справа становится зелёным при включении, текст остаётся светлым; F6 показана отдельным штатным квадратиком. Строка движется и скрывается вместе с автомобильным HUD. Работа подтверждена на Epic Games / SnowRunner 44.1; мод проверяет точный SHA256 EXE.
+
+[Описание HUD](ingame/README.md), [установка и обновление](ingame/INSTALL_NATIVE.md), [техническая документация](ingame/experimental/scaleform/README.md).
+
+Сборка из PowerShell в корне репозитория (Windows x64, MSYS2 UCRT64 GCC):
 
 ```powershell
 .\ingame\prepare-dependencies.ps1
 .\ingame\experimental\scaleform\build.ps1 -Autopilot -Package
 ```
 
-Исходники нативной версии находятся в `ingame/experimental/scaleform`; этот путь сохранён с этапа разработки. Общая логика управления — `ingame/src/CruiseState.h`. Результат сборки — `ingame/build/scaleform-probe/SnowRunnerNativeAutopilot.asi`; настройки — `SnowRunnerNativeAutopilot.ini`. Проверены F6/W/S/N, Alt+Tab, подсветка, движение и скрытие HUD, отдельная клавиша F6. Поддерживается точная проверенная сборка Epic 44.1; совпадение EXE проверяется по SHA256.
+Результат — `ingame/build/scaleform-probe/SnowRunnerNativeAutopilot.asi`. Исходники HUD находятся в `ingame/experimental/scaleform`; путь сохранён с этапа разработки. Общая логика управления — `ingame/src/CruiseState.h`. История исследования — [Scaleform integration analysis](docs/scaleform-integration-analysis.md).
 
-Прежняя версия с DirectX-наложением сохранена в `ingame/src/Autopilot.cpp`, её [архивная документация](ingame/README.md) и установщик относятся к 1.0.0. Нативная версия не использует ImGui, графические перехваты или распознавание изображения. История исследования — [Scaleform integration analysis](docs/scaleform-integration-analysis.md).
+## SnowRunner CC standalone 1.0.1
 
-## Отдельная утилита
+Отдельная C#-утилита с иконкой EXE и значком состояния в трее. Не требует изменения файлов игры. [Запуск, настройки и ограничения](standalone/README.md).
 
-Для сборки достаточно системного компилятора .NET Framework 4.x, без MSYS2 и загрузки зависимостей:
+Сборка системным компилятором .NET Framework 4.x:
 
 ```powershell
 .\standalone\build.ps1
 ```
 
-Запустите `standalone/dist/SnowRunnerCruiseControl.exe`. В `standalone/src` находятся C#-исходники, в `standalone/tests` — проверки. Иконки EXE и трея лежат в `standalone/assets`; их редактируемый векторный источник — `GenerateIcons.cs`. Настройки — `standalone/CruiseControl.ini`. [Запуск и управление](standalone/README.md).
+Результат — `standalone/dist/SnowRunnerCruiseControl.exe`; настройки — `CruiseControl.ini`. Исходники находятся в `standalone/src`, проверки — в `standalone/tests`, иконки и их редактируемый источник — в `standalone/assets`.
 
-Каждый проект имеет собственные исходники, тесты, скрипт сборки, настройки, документацию и выходную папку сборки. Готовые сборки и промежуточные файлы исключены из Git.
+Имена EXE, ASI, INI, секций настроек и внутренних классов сохранены для совместимости при обновлении. Пользовательское название обоих вариантов — SnowRunner Cruise control (SnowRunner CC). Каждый проект имеет собственные исходники, проверки, настройки и документацию. Готовые сборки и промежуточные файлы исключены из Git.

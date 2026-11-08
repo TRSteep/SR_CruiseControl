@@ -1,4 +1,6 @@
-# SnowRunner Cruise Control — отдельная утилита
+# SnowRunner Cruise control (SnowRunner CC) — standalone 1.0.1
+
+Текущий релиз — **[standalone 1.0.1](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1)**. Полное название — SnowRunner Cruise control, сокращённое — SnowRunner CC. Имя `SnowRunnerCruiseControl.exe` и настройки `CruiseControl.ini` сохранены для совместимости. Версия хранится в `VERSION`.
 
 ![Иконка утилиты](assets/cruise-control.png)
 

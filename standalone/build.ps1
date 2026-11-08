@@ -10,11 +10,24 @@ New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
 $buildDir = Join-Path $projectRoot 'build'
 $assetsDir = Join-Path $projectRoot 'assets'
 New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
+$version = [IO.File]::ReadAllText((Join-Path $projectRoot 'VERSION')).Trim()
+if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid standalone VERSION.' }
+$assemblyInfo = Join-Path $buildDir 'AssemblyInfo.cs'
+$metadata = @"
+using System.Reflection;
+[assembly: AssemblyTitle("SnowRunner Cruise control — standalone $version")]
+[assembly: AssemblyProduct("SnowRunner Cruise control (SnowRunner CC)")]
+[assembly: AssemblyDescription("SnowRunner CC standalone $version")]
+[assembly: AssemblyVersion("$version.0")]
+[assembly: AssemblyFileVersion("$version.0")]
+"@
+[IO.File]::WriteAllText($assemblyInfo, $metadata, (New-Object Text.UTF8Encoding($false)))
 & $compiler /nologo /target:exe /reference:System.Drawing.dll "/out:$buildDir\GenerateIcons.exe" (Join-Path $assetsDir 'GenerateIcons.cs')
 if ($LASTEXITCODE -ne 0) { throw 'Icon generator compilation failed.' }
 & (Join-Path $buildDir 'GenerateIcons.exe') $assetsDir
 if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed.' }
 $sourceFiles = @(
+    $assemblyInfo,
     (Join-Path $projectRoot 'src\CruiseController.cs'),
     (Join-Path $projectRoot 'src\KeyboardPolicy.cs'),
     (Join-Path $projectRoot 'src\Native.cs'),

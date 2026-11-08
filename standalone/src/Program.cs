@@ -10,6 +10,13 @@ namespace SnowRunnerCruise
 {
     internal static class Program
     {
+        internal const string ProductName = "SnowRunner Cruise control";
+        internal const string ShortName = "SnowRunner CC";
+        internal static string DisplayName
+        {
+            get { return ProductName + " — standalone " + typeof(Program).Assembly.GetName().Version.ToString(3); }
+        }
+
         [STAThread]
         private static int Main(string[] args)
         {
@@ -18,7 +25,7 @@ namespace SnowRunnerCruise
             {
                 if (!created)
                 {
-                    MessageBox.Show("Утилита уже запущена. Ищите значок в системном трее.", "SnowRunner Cruise Control");
+                    MessageBox.Show("Утилита уже запущена. Ищите значок в системном трее.", DisplayName);
                     return 0;
                 }
                 Application.EnableVisualStyles();
@@ -34,7 +41,7 @@ namespace SnowRunnerCruise
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "SnowRunner Cruise Control", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show(ex.Message, DisplayName, MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return 1;
                 }
             }
@@ -82,7 +89,7 @@ namespace SnowRunnerCruise
             Application.ApplicationExit += OnApplicationExit;
             Microsoft.Win32.SystemEvents.SessionEnding += OnSessionEnding;
             UpdateStatus();
-            tray.ShowBalloonTip(3500, "SnowRunner Cruise Control",
+            tray.ShowBalloonTip(3500, Program.DisplayName,
                 toggleKey + " — включить/выключить; W, S, N — отключить. Работает только в окне игры.", ToolTipIcon.Info);
         }
 
@@ -156,7 +163,7 @@ namespace SnowRunnerCruise
             if (value == lastStatus) return;
             lastStatus = value;
             status.Text = value;
-            tray.Text = value;
+            tray.Text = Program.ShortName + " · " + value;
             tray.Icon = cruise.InputFailed ? errorIcon : cruise.Active ? activeIcon : idleIcon;
         }
 

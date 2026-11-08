@@ -5,6 +5,9 @@ $root = $PSScriptRoot
 $out = Join-Path $root '..\..\build\scaleform-probe'
 $minhook = Join-Path $root '..\..\vendor\minhook-1.3.4'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
+$version = [IO.File]::ReadAllText((Join-Path $root '..\..\VERSION')).Trim()
+if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid HUD VERSION.' }
+[IO.File]::WriteAllText((Join-Path $out 'SnowRunnerCCVersion.h'), ('#define SNOWRUNNER_CC_VERSION "' + $version + '"'), (New-Object Text.UTF8Encoding($false)))
 $oldPath = $env:PATH
 try {
     $env:PATH = "$Toolchain;$oldPath"
@@ -15,7 +18,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $file" }
         $objects += $target
     }
-    $flags = @('-std=c++17','-O2','-Wall','-Wextra','-Werror','-static','-pthread',"-I$minhook\include")
+    $flags = @('-std=c++17','-O2','-Wall','-Wextra','-Werror','-static','-pthread',"-I$minhook\include", "-I$out")
     if($Autopilot){$flags+='-DSCALEFORM_NATIVE_AUTOPILOT'}
     & "$Toolchain\g++.exe" @flags (Join-Path $root 'ProbeTests.cpp') $objects -lbcrypt -o (Join-Path $out 'ProbeTests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Probe test compilation failed.' }
@@ -49,7 +52,7 @@ try {
         $config=if($Autopilot){'SnowRunnerNativeAutopilot.ini'}else{'SnowRunnerScaleformProbe.ini'}
         Copy-Item -LiteralPath (Join-Path $out $binary),(Join-Path $root $config),(Join-Path $root 'README.md') -Destination $packageDir
         Copy-Item -LiteralPath (Join-Path $minhook 'LICENSE.txt') -Destination (Join-Path $packageDir 'MinHook-LICENSE.txt')
-        $archive=Join-Path $out $(if($Autopilot){'SnowRunner-Native-Autopilot-v11.zip'}else{'SnowRunner-Scaleform-Prototype-v7.zip'})
+        $archive=Join-Path $out $(if($Autopilot){"SnowRunnerCC-HUD-ingame-v$version-win-x64.zip"}else{'SnowRunner-Scaleform-Prototype-v7.zip'})
         $packageFiles=@($binary,$config,'README.md','MinHook-LICENSE.txt') | ForEach-Object { Join-Path $packageDir $_ }
         Compress-Archive -LiteralPath $packageFiles -DestinationPath $archive -Force
         Write-Output "Packaged: $archive"

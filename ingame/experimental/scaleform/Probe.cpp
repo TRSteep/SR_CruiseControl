@@ -10,13 +10,14 @@
 #include "MinHook.h"
 #include "NativeUi.h"
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
+#include "SnowRunnerCCVersion.h"
 #include "NativeSession.h"
 #include "NativeControl.h"
 #endif
 
 namespace probe {
-// Deliberately separate from the released autopilot. These offsets describe
-// only the EXE whose complete SHA256 is checked before any hook is installed.
+// Native HUD and diagnostic hooks support only the EXE whose complete
+// SHA256 is checked before any hook is installed.
 constexpr uintptr_t createRva = 0x10243a0, attachRva = 0x1b61880, getRva = 0x1b5d4b0;
 constexpr unsigned char createPrefix[] = {0x48,0x89,0x5c,0x24,0x18,0x48,0x89,0x74,0x24,0x20,0x55,0x41,0x54};
 constexpr unsigned char attachPrefix[] = {0x4c,0x8b,0xdc,0x4d,0x89,0x4b,0x20,0x4d,0x89,0x43,0x18,0x55};
@@ -263,7 +264,7 @@ DWORD WINAPI run(void*) {
 #endif
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-    std::fprintf(log,"Native Scaleform autopilot 11; enabled=%u; F-key=%u; native vector cruise icon; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
+    std::fprintf(log,"SnowRunner Cruise control (SnowRunner CC) HUD " SNOWRUNNER_CC_VERSION "; enabled=%u; F-key=%u; native vector cruise icon; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
 #else
     std::fprintf(log, "Scaleform diagnostic probe 7; TEST=%u (native row attached to library-backed panel); no AS3 Invoke or input writes.\n",enableTestRow);
 #endif
