@@ -25,6 +25,22 @@ bool missingPosition(void*,void*,const char*,nativeui::Value*,bool) { ++nativeRe
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
 float fakeAdvance(void* movie,float delta,unsigned count,bool capture){check(movie==reinterpret_cast<void*>(1)&&delta==.125f&&count==2&&capture);return 3.125f;}
 uintptr_t fakeDestroy(void* movie,unsigned flags){check(movie==reinterpret_cast<void*>(1)&&flags==1);return reinterpret_cast<uintptr_t>(movie);}
+bool showThisFrame=false,nativeFrameVisible=true,customFrameVisible=true;
+bool frameGet(void*,void* parent,const char* name,nativeui::Value* out,bool) {
+    const auto id=reinterpret_cast<uintptr_t>(parent);
+    if(!std::strcmp(name,"brakeBtn")){out->type=10;out->interfacePointer=1;out->object=8;return true;}
+    if(!std::strcmp(name,"visible")){*out=nativeui::boolean(id==8?nativeFrameVisible:id==4?customFrameVisible:true);return true;}
+    if(!std::strcmp(name,"alpha")){*out=nativeui::number(1);return true;}
+    return false;
+}
+bool frameSet(void*,void* parent,const char* name,const nativeui::Value* value,bool) {
+    if(parent==reinterpret_cast<void*>(4)&&!std::strcmp(name,"visible"))customFrameVisible=value->object!=0;
+    return true;
+}
+float frameAdvance(void* movie,float delta,unsigned count,bool capture) {
+    check(movie==reinterpret_cast<void*>(1)&&delta==.125f&&count==2&&capture);
+    nativeFrameVisible=showThisFrame;return 6.25f;
+}
 #endif
 int main() {
     char name[128]{};
@@ -67,6 +83,17 @@ int main() {
     probe::originalAdvance=fakeAdvance;probe::originalDestroy=fakeDestroy;
     check(probe::advanceHook(reinterpret_cast<void*>(1),.125f,2,true)==3.125f);
     check(probe::destroyHook(reinterpret_cast<void*>(1),1)==1);
+    // The original Advance changes the native button this frame. Mirroring
+    // before it would use the previous visibility and fail both assertions.
+    probe::ui={frameGet,frameSet,nullptr,nullptr,nullptr,nullptr};
+    nativeui::Value panel;panel.type=10;panel.interfacePointer=1;panel.object=2;
+    nativeui::Value row;row.type=10;row.interfacePointer=1;row.object=4;
+    probe::sessions.add(reinterpret_cast<void*>(1),panel,row);
+    probe::originalAdvance=frameAdvance;
+    check(probe::advanceHook(reinterpret_cast<void*>(1),.125f,2,true)==6.25f&&!customFrameVisible);
+    showThisFrame=true;
+    check(probe::advanceHook(reinterpret_cast<void*>(1),.125f,2,true)==6.25f&&customFrameVisible);
+    check(probe::destroyHook(reinterpret_cast<void*>(1),1)==1&&!probe::sessions.has(reinterpret_cast<void*>(1)));
 #endif
     std::printf("PASS: %u probe memory/ABI/forwarding checks\n",checks);
 }

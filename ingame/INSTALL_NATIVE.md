@@ -1,4 +1,4 @@
-# SnowRunner Cruise control (SnowRunner CC) — HUD 1.1.4: установка
+# SnowRunner Cruise control (SnowRunner CC) — HUD 1.1.5: установка
 
 Нативный ASI-мод для Windows x64. Строка «КРУИЗ КОНТРОЛЬ» и отдельный квадратик F6 создаются внутри штатного Scaleform HUD: двигаются вместе с соседними строками и скрываются вместе с автомобильным интерфейсом.
 
@@ -14,13 +14,11 @@ a3cb442ec138eb2eb7e335e5c80e376766550740e49e233ac9eace035e182285
 
 Это удержание полного газа, а не поддержание заданной скорости или автоматическое движение по маршруту.
 
-Текущий релиз — **[HUD 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4)**. Имена ASI/INI/журнала и секция `[Autopilot]` сохранены для совместимости; название приложения — SnowRunner Cruise control (SnowRunner CC).
-
-В разделе Assets доступны EXE установщика, ZIP установщика и архив для ручной установки. Архивы Source code содержат исходники, а не готовую программу.
+Локальная сборка — **HUD 1.1.5**, ещё не опубликована. Последний опубликованный релиз — [HUD 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4), без исправления скрытия HUD. Имена ASI/INI/журнала и секция `[Autopilot]` сохранены для совместимости.
 
 ## Установщик
 
-Скачайте [SnowRunnerCC-HUD-1.1.4-Setup.exe](https://github.com/TRSteep/SR_CruiseControl/releases/download/ingame-v1.1.4/SnowRunnerCC-HUD-1.1.4-Setup.exe) или [ZIP установщика](https://github.com/TRSteep/SR_CruiseControl/releases/download/ingame-v1.1.4/SnowRunnerCC-HUD-1.1.4-Setup.zip) и распакуйте его.
+Локальный EXE: `ingame/build/installer/1.1.5/SnowRunnerCC-HUD-1.1.5-Setup.exe`. ZIP: `SnowRunnerCC-HUD-1.1.5-Setup.zip` в том же каталоге. На GitHub они появятся после публикации.
 
 Закройте игру, запустите установщик, выберите корневую папку SnowRunner или папку с EXE и нажмите «Установить / обновить». Требуется .NET Framework 4.x. Установщик проверяет точный поддержанный EXE, сохраняет INI, создаёт резервные копии рядом с игрой и отключает прежние overlay/test ASI. Неизвестный `dinput8.dll` не заменяет: для другого совместимого загрузчика используйте ручные шаги ниже. Если нужны права записи, мастер предложит перезапуск от администратора.
 
@@ -31,7 +29,7 @@ a3cb442ec138eb2eb7e335e5c80e376766550740e49e233ac9eace035e182285
 ## Ручная установка
 
 1. Закройте SnowRunner.
-2. Скачайте **SnowRunnerCC-HUD-ingame-v1.1.4-win-x64.zip** из GitHub Releases и распакуйте.
+2. Скачайте **SnowRunnerCC-HUD-ingame-v1.1.5-win-x64.zip** из GitHub Releases после публикации и распакуйте.
 3. Откройте папку **рядом с SnowRunner.exe**. Обычно это:
 
    ```text
@@ -101,3 +99,5 @@ ToggleKey=117
 Закройте игру и удалите `SnowRunnerNativeAutopilot.asi` и `SnowRunnerNativeAutopilot.ini`. Журнал можно удалить отдельно. `dinput8.dll` удаляйте только если он не используется другими модами. Выгрузка ASI на лету не поддерживается.
 
 В пакет включены лицензии MinHook и Ultimate ASI Loader. Игровые шрифты, текстуры и GFX-файлы не распространяются: мод использует ресурсы установленной игры.
+
+При отключении штатного HUD (по умолчанию `\`) строка круиза, значок и F6 скрываются вместе с игровыми строками. Повторное включение HUD возвращает их. Скрытие интерфейса сохраняет управление газом. Исправление требует живой проверки в игре.

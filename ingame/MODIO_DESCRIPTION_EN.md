@@ -17,11 +17,13 @@ If W is already held, press F6 and then release W: cruise takes over and keeps t
 - Use physical W for throttle and S for brake. Gamepad/wheel input and switching the engine off with a mouse are not tracked.
 - Changing focus or pressing Esc/Enter/M/F1/F4 cancels throttle. Returning to the game does not re-enable it.
 
+Version 1.1.5 is currently a local build and has not yet been published. It adds HUD visibility synchronisation: hiding the game HUD hides the entire cruise row, icon and F-key hint; showing the HUD restores them without changing throttle state.
+
 ## Installation
 
 1. Close SnowRunner.
-2. Download and extract `SnowRunnerCC-HUD-1.1.4-Setup.zip` from this page's manual files, if available, or obtain the published installer from GitHub Releases.
-3. Run `SnowRunnerCC-HUD-1.1.4-Setup.exe` and select the game root or the folder containing `SnowRunner.exe`.
+2. Download and extract `SnowRunnerCC-HUD-1.1.5-Setup.zip` from this page's manual files, if available, or obtain the published installer from GitHub Releases.
+3. Run `SnowRunnerCC-HUD-1.1.5-Setup.exe` and select the game root or the folder containing `SnowRunner.exe`.
 4. Click **Install / update**. Administrator access is requested only if the selected directory requires it.
 5. Launch SnowRunner normally. No separate launcher is needed afterwards.
 
@@ -31,9 +33,9 @@ The installer preserves your INI, backs up replaced files, disables the previous
 
 Run the installer again to update. Your INI is preserved. **Remove HUD** removes only the installed ASI after verifying its hash; INI, the shared loader and backups remain. Previous overlay/test versions stay disabled. The installer is a portable setup tool and does not add an entry to Windows Installed Apps.
 
-Version: **HUD 1.1.4**. The installer is unsigned. Installation/update/removal/rollback and payload checks are automated; a full interactive installer run on every supported Windows configuration is not claimed.
+Version: **HUD 1.1.5**. The installer is unsigned. Installation/update/removal/rollback and payload checks are automated; a full interactive installer run on every supported Windows configuration is not claimed.
 
-[Source code](https://github.com/TRSteep/SR_CruiseControl) · [HUD 1.1.4 release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4)
+[Source code](https://github.com/TRSteep/SR_CruiseControl) · [Latest published HUD release: 1.1.4 (without the HUD-toggle fix)](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4)
 
 Report issues with the game store/build, HUD version and `SnowRunnerNativeAutopilot.log`. Do not include account tokens or save files.
 

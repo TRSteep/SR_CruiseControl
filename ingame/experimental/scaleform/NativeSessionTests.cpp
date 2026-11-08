@@ -3,10 +3,13 @@
 #include <cstdlib>
 #include <string>
 #include <unordered_set>
+#include <limits>
 
 namespace {
 unsigned checks=0,sets=0;int references=0;bool hidden=false,offStage=false,cycle=false,failColor=false;
 uintptr_t color=0;bool selected=false;std::string label;
+bool nativeVisible=true,rowVisible=true,missingBrake=false,badAlpha=false,failVisibility=false,selectionShows=false;
+double nativeAlpha=1,rowAlpha=1;
 const char* languageText=nullptr;double measuredWidth=0,fieldWidth=0,fieldScale=0;
 bool readText(const void* from,void* to,size_t size) {
     if(!languageText)return false;
@@ -23,19 +26,21 @@ void acquire(nativeui::Value* out,uintptr_t id){*out=object(id);pin(out);}
 bool get(void*,void* parent,const char* name,nativeui::Value* out,bool){
     const auto id=reinterpret_cast<uintptr_t>(parent);
     if(!std::strcmp(name,"stage")){if(offStage)out->type=1;else acquire(out,100);return true;}
-    if(!std::strcmp(name,"visible")){*out=nativeui::boolean(!hidden);return true;}
-    if(!std::strcmp(name,"alpha")){*out=nativeui::number(1);return true;}
+    if(!std::strcmp(name,"visible")){*out=nativeui::boolean(id==2?!hidden:id==8?nativeVisible:rowVisible);return true;}
+    if(!std::strcmp(name,"alpha")){if(id==8&&badAlpha)return false;*out=nativeui::number(id==2?1:id==8?nativeAlpha:rowAlpha);return true;}
     if(!std::strcmp(name,"parent")){if(cycle)acquire(out,id);else out->type=1;return true;}
     if(!std::strcmp(name,"tfCont")){acquire(out,6);return true;}
     if(id==6&&!std::strcmp(name,"tf")){acquire(out,7);return true;}
-    if(!std::strcmp(name,"brakeBtn")){acquire(out,8);return true;}
+    if(!std::strcmp(name,"brakeBtn")){if(missingBrake)return false;acquire(out,8);return true;}
     if(id==7&&!std::strcmp(name,"text")&&languageText){*out=nativeui::string(languageText);return true;}
     if(id==7&&!std::strcmp(name,"textWidth")&&measuredWidth){*out=nativeui::number(measuredWidth);return true;}
     return false;
 }
 bool set(void*,void*,const char* name,const nativeui::Value* value,bool){
     ++sets;
-    if(!std::strcmp(name,"selected"))selected=value->object!=0;
+    if(!std::strcmp(name,"selected")){selected=value->object!=0;if(selectionShows){rowVisible=true;rowAlpha=1;}}
+    if(!std::strcmp(name,"visible")){if(failVisibility)return false;rowVisible=value->object!=0;}
+    if(!std::strcmp(name,"alpha")){if(failVisibility)return false;check(nativeui::asNumber(*value,rowAlpha));}
     if(!std::strcmp(name,"label"))label=reinterpret_cast<const char*>(value->object);
     if(!std::strcmp(name,"textColor")){color=value->object;return !failColor;}
     if(!std::strcmp(name,"width"))check(nativeui::asNumber(*value,fieldWidth));
@@ -52,6 +57,45 @@ int main(){
     check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!selected&&color==0xd2d5d1&&label=="АВТОПИЛОТ [F6]");
     const auto oldSets=sets;check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&sets==oldSets&&references==2);
     check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&selected&&color==0xd2d5d1&&references==2);
+    nativeVisible=false;
+    // Backslash can hide native buttons while the parent stays visible.
+    // Display changes must not change the driving guard or cruise state.
+    check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&!rowVisible&&selected&&rowAlpha==1);
+    const auto hiddenSets=sets;
+    check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&!rowVisible&&sets==hiddenSets);
+    nativeVisible=true;
+    check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&rowVisible&&selected);
+    nativeAlpha=0;
+    check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&rowVisible&&rowAlpha==0&&selected);
+    for(double opacity:{.1,.25,.5,.75,1.0}) {
+        nativeAlpha=opacity;
+        check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&rowAlpha==opacity&&selected);
+    }
+    nativeVisible=false;selectionShows=true;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!rowVisible&&!selected);
+    selectionShows=false;rowVisible=true; // External writes are corrected too.
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!rowVisible);
+    nativeVisible=true;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&rowVisible);
+    missingBrake=true;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!rowVisible&&rowAlpha==0);
+    missingBrake=false;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&rowVisible&&rowAlpha==1);
+    badAlpha=true;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!rowVisible&&rowAlpha==0);
+    badAlpha=false;nativeAlpha=std::numeric_limits<double>::quiet_NaN();
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!rowVisible&&rowAlpha==0);
+    nativeAlpha=1;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&rowVisible&&rowAlpha==1);
+    nativeVisible=false;failVisibility=true;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&rowVisible);
+    failVisibility=false;
+    check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!rowVisible);
+    for(unsigned i=0;i<100;++i) {
+        nativeVisible=(i%2)==0;
+        check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&rowVisible==nativeVisible&&references==2);
+    }
+    nativeVisible=true;session.tick(movie,1,"АВТОПИЛОТ [F6]");
     hidden=true;check(!session.tick(movie,1,"АВТОПИЛОТ [F6]"));hidden=false;
     offStage=true;check(!session.tick(movie,1,"АВТОПИЛОТ [F6]"));offStage=false;
     cycle=true;check(!session.tick(movie,1,"АВТОПИЛОТ [F6]")&&references==2);cycle=false;

@@ -104,6 +104,8 @@ void registerRow(const ObservedValue& panel,const ObservedValue& row) {
     if(read(reinterpret_cast<void*>(panel.interfacePointer+8),&movie,sizeof(movie))&&movie)sessions.add(movie,panel,row);
 }
 float advanceHook(void* movie,float delta,unsigned catchUp,bool capture) {
+    // Observe native visibility after the game's current-frame AS3 update.
+    const float result=originalAdvance(movie,delta,catchUp,capture);
     if(!insideUi && sessions.has(movie)) {
         ++nativeFrames;
         insideUi=true;
@@ -112,7 +114,7 @@ float advanceHook(void* movie,float delta,unsigned catchUp,bool capture) {
         nativecontrol::hudStamp=GetTickCount64();
         insideUi=false;
     }
-    return originalAdvance(movie,delta,catchUp,capture);
+    return result;
 }
 uintptr_t destroyHook(void* movie,unsigned flags) {
     if(sessions.has(movie)) {

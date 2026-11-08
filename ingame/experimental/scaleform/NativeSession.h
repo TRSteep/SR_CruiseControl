@@ -3,12 +3,37 @@
 #include "CruiseIcon.h"
 #include "HudLocalization.h"
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
 
 namespace nativeui {
+inline void syncNativeVisibility(const Api& api,const Value& panel,const Value& row) {
+    Api quiet=api;quiet.trace=nullptr;
+    Owned brake(quiet),flag(quiet),alpha(quiet);
+    bool wantedVisible=false;double wantedAlpha=0;
+    // The game can hide its named buttons without hiding their container.
+    // Mirror the handbrake row, including fades, instead of tracking a key.
+    if(get(quiet,panel,"brakeBtn",brake)&&get(quiet,brake.value,"visible",flag)&&type(flag.value)==2&&
+       get(quiet,brake.value,"alpha",alpha)&&asNumber(alpha.value,wantedAlpha)&&
+       std::isfinite(wantedAlpha)&&wantedAlpha>=0&&wantedAlpha<=1) {
+        wantedVisible=flag.value.object!=0;
+    }else wantedAlpha=0; // Hide until the native row is readable again.
+    Owned actualFlag(quiet),actualAlpha(quiet);double opacity=0;
+    bool changed=false,okay=true;
+    if(!get(quiet,row,"visible",actualFlag)||type(actualFlag.value)!=2||
+       (actualFlag.value.object!=0)!=wantedVisible) {
+        changed=true;okay=set(quiet,row,"visible",boolean(wantedVisible))&&okay;
+    }
+    if(!get(quiet,row,"alpha",actualAlpha)||!asNumber(actualAlpha.value,opacity)||
+       !std::isfinite(opacity)||std::abs(opacity-wantedAlpha)>0.00001) {
+        changed=true;okay=set(quiet,row,"alpha",number(wantedAlpha))&&okay;
+    }
+    if(changed)trace(api,"hud.visibility.end",wantedVisible&&wantedAlpha>.01?"shown":"hidden",okay);
+}
+
 inline bool visibleOnStage(const Api& api,const Value& panel) {
     Owned stage(api);
     if(!get(api,panel,"stage",stage)||!object(stage.value))return false;
@@ -103,6 +128,9 @@ public:
                     trace(api,"icon.draw.end",state==1?"on":state==2?"error":"off",icon);
                 }
             }
+            // The entire custom row owns the icon and F-key badge. Hiding
+            // this parent hides all three without altering cruise state.
+            syncNativeVisibility(api,row.panel.value,row.row.value);
             visible=(row.ready&&visibleOnStage(changed?api:quiet,row.panel.value))||visible;
         }
         return visible;
