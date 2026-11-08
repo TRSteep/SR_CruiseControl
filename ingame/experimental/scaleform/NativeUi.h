@@ -16,7 +16,9 @@ struct Value {
 static_assert(sizeof(Value) == 48 && offsetof(Value,type) == 0x18);
 using Get = bool(*)(void*,void*,const char*,Value*,bool);
 using Set = bool(*)(void*,void*,const char*,const Value*,bool);
-using Invoke = bool(*)(void*,void*,Value*,const char*,const Value*,unsigned,bool);
+// This EXE reads the full qword argument count at entry RSP+0x30.
+// Using unsigned here leaves its upper half undefined on Win64.
+using Invoke = bool(*)(void*,void*,Value*,const char*,const Value*,uint64_t,bool);
 using Release = void(*)(void*,Value*,void*);
 using Attach = bool(*)(void*,void*,Value*,const char*,const char*,int,const void*);
 using Empty = bool(*)(void*,void*,Value*,const char*,int);
@@ -83,8 +85,8 @@ inline bool set(const Api& api,const Value& parent,const char* name,const Value&
     const bool okay=api.set(iface(parent),data(parent),name,&value,display(parent));
     trace(api,"set.end",name,okay); return okay;
 }
-inline bool call(const Api& api,const Value& parent,const char* name,const Value* args,unsigned count,Owned& out) {
-    if (!object(parent)) return false;
+inline bool call(const Api& api,const Value& parent,const char* name,const Value* args,uint64_t count,Owned& out) {
+    if (!object(parent)||!api.invoke) return false;
     trace(api,"invoke.begin",name);
     const bool okay=api.invoke(iface(parent),data(parent),&out.value,name,args,count,display(parent));
     trace(api,"invoke.end",name,okay); return okay;
@@ -105,6 +107,7 @@ struct RowOptions {
     double step = 96;
     void (*created)(const Value& panel,const Value& row) = nullptr;
     const char* keyLabel = nullptr;
+    bool cruiseIcon = false;
 };
 // Candidate entry point after the game's own brakeBtn read has returned.
 // This is not yet validated in a live driving HUD. Never call from creation.
@@ -152,6 +155,13 @@ inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& br
             set(api,slot.value,"visible",boolean(true));
         if(!badge&&object(slot.value))set(api,slot.value,"visible",boolean(false));
         trace(api,"keybadge.end",options.keyLabel,badge);
+    }
+    if(options.cruiseIcon) {
+        Owned icon(api);
+        const bool created=empty(api,row.value,icon,"srAutopilotIcon")&&
+            set(api,icon.value,"x",number(162))&&set(api,icon.value,"y",number(4))&&
+            set(api,icon.value,"mouseEnabled",boolean(false))&&set(api,icon.value,"mouseChildren",boolean(false));
+        trace(api,"icon.create.end","speedometer",created);
     }
     if (options.created) options.created(panel,row.value);
     return Stage::Created;

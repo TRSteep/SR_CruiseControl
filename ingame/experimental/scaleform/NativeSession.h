@@ -1,5 +1,6 @@
 #pragma once
 #include "NativeUi.h"
+#include "CruiseIcon.h"
 #include <algorithm>
 #include <memory>
 #include <mutex>
@@ -74,11 +75,13 @@ public:
             auto& row=*entry;const bool changed=row.state!=state;
             if(changed) {
                 Owned text(api),tf(api);Value color;color.type=4;
-                color.object=state==1?0xd5e07a:state==2?0xef744e:0xd2d5d1;
+                color.object=0xd2d5d1;
                 row.ready=set(api,row.row.value,"selected",boolean(state==1))&&set(api,row.row.value,"label",string(label))&&
                     get(api,row.row.value,"tfCont",text)&&get(api,text.value,"tf",tf)&&
                     set(api,tf.value,"text",string(label))&&set(api,tf.value,"textColor",color);
                 row.state=state;
+                const bool icon=drawCruiseIcon(api,row.row.value,state);
+                trace(api,"icon.draw.end",state==1?"on":state==2?"error":"off",icon);
             }
             visible=(row.ready&&visibleOnStage(changed?api:quiet,row.panel.value))||visible;
         }

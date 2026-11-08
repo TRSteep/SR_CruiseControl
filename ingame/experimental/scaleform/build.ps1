@@ -29,6 +29,10 @@ try {
     if($LASTEXITCODE -ne 0){throw 'Session test compilation failed.'}
     & (Join-Path $out 'NativeSessionTests.exe')
     if($LASTEXITCODE -ne 0){throw 'Session tests failed.'}
+    & "$Toolchain\g++.exe" @flags (Join-Path $root 'CruiseIconTests.cpp') -o (Join-Path $out 'CruiseIconTests.exe')
+    if($LASTEXITCODE -ne 0){throw 'Cruise icon test compilation failed.'}
+    & (Join-Path $out 'CruiseIconTests.exe')
+    if($LASTEXITCODE -ne 0){throw 'Cruise icon tests failed.'}
     if($Autopilot){
         & "$Toolchain\g++.exe" @flags (Join-Path $root '..\..\tests\StateTests.cpp') -o (Join-Path $out 'StateTests.exe')
         if($LASTEXITCODE -ne 0){throw 'Control test compilation failed.'}
@@ -45,7 +49,7 @@ try {
         $config=if($Autopilot){'SnowRunnerNativeAutopilot.ini'}else{'SnowRunnerScaleformProbe.ini'}
         Copy-Item -LiteralPath (Join-Path $out $binary),(Join-Path $root $config),(Join-Path $root 'README.md') -Destination $packageDir
         Copy-Item -LiteralPath (Join-Path $minhook 'LICENSE.txt') -Destination (Join-Path $packageDir 'MinHook-LICENSE.txt')
-        $archive=Join-Path $out $(if($Autopilot){'SnowRunner-Native-Autopilot-v10.zip'}else{'SnowRunner-Scaleform-Prototype-v7.zip'})
+        $archive=Join-Path $out $(if($Autopilot){'SnowRunner-Native-Autopilot-v11.zip'}else{'SnowRunner-Scaleform-Prototype-v7.zip'})
         $packageFiles=@($binary,$config,'README.md','MinHook-LICENSE.txt') | ForEach-Object { Join-Path $packageDir $_ }
         Compress-Archive -LiteralPath $packageFiles -DestinationPath $archive -Force
         Write-Output "Packaged: $archive"

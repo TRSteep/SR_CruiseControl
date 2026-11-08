@@ -38,7 +38,7 @@ int main(){
     session.add(movie,object(2),object(4));check(references==2&&session.has(movie));
     check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&!selected&&color==0xd2d5d1&&label=="АВТОПИЛОТ [F6]");
     const auto oldSets=sets;check(session.tick(movie,0,"АВТОПИЛОТ [F6]")&&sets==oldSets&&references==2);
-    check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&selected&&color==0xd5e07a&&references==2);
+    check(session.tick(movie,1,"АВТОПИЛОТ [F6]")&&selected&&color==0xd2d5d1&&references==2);
     hidden=true;check(!session.tick(movie,1,"АВТОПИЛОТ [F6]"));hidden=false;
     offStage=true;check(!session.tick(movie,1,"АВТОПИЛОТ [F6]"));offStage=false;
     cycle=true;check(!session.tick(movie,1,"АВТОПИЛОТ [F6]")&&references==2);cycle=false;
