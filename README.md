@@ -15,8 +15,6 @@ Choose one version:
 | **Standalone 1.0.1** | Separate portable application with a tray icon. No changes to game files; start it before playing. It does not depend on an exact EXE hash, although game updates may still affect input compatibility. | [Standalone README](standalone/README.md) · [Release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) |
 | **HUD** | Loads with the game and adds a row to its native interface. Requires the supported game executable; updates and other mods can affect compatibility. | [HUD README](ingame/README.md) · [Release 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) |
 
-HUD source version **1.1.5** adds visibility synchronisation when hiding/showing the game's HUD. Its source and tests are in this repository; the latest packaged GitHub release is **1.1.4**, which does not include that fix. Do not run both versions together.
-
 ## Русский
 
 Удержание газа в SnowRunner для Windows x64. Попытка сделать удобным долгое перемешивание грязи без педалей: автомобиль медленно, но упорно пробирается вперёд, а постоянно держать W надоедает. SnowRunner CC удерживает газ до отключения водителем.
@@ -31,7 +29,5 @@ HUD source version **1.1.5** adds visibility synchronisation when hiding/showing
 | --- | --- | --- |
 | **Standalone 1.0.1** | Отдельная переносимая утилита со значком в трее. Установка и изменение файлов игры не требуются; запускать перед игрой. Нет привязки к точному хешу EXE, но совместимость ввода после обновлений всё равно требует проверки. | [README Standalone](standalone/README.md) · [Релиз](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) |
 | **HUD** | Встраиваемый мод: загружается вместе с игрой, строка оформлена как штатный интерфейс. Нужна поддержанная сборка EXE; обновления игры и другие моды могут влиять на совместимость. Есть установщик и ручной пакет. | [README HUD](ingame/README.md) · [Релиз 1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) |
-
-В исходниках HUD текущая версия — **1.1.5**: строка скрывается и возвращается вместе со штатным HUD. Готовый GitHub-релиз пока **1.1.4**, без этого исправления. Не используйте оба варианта одновременно.
 
 Подробные инструкции запуска, настройки, обновления и сборки находятся в отдельных README каждого проекта. История нативной интеграции — [Scaleform integration analysis](docs/scaleform-integration-analysis.md).
