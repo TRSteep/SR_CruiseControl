@@ -1,15 +1,26 @@
+ENG
+
+------------------------------
+RU
+
 # SnowRunner Cruise control (SnowRunner CC)
 
-Удержание газа в SnowRunner для Windows x64. Два варианта с отдельными версиями и инструкциями:
+Удержание газа в SnowRunner для Windows x64. 
+* **F6** включает и выключает удержание полного газа
+* **W/S/N** отключают его.
+Это удержание газа, а не поддержание заданной скорости или движение по маршруту.
 
+Существуе 2 варианта мода (Выберите один нужный вариант)
 | Вариант | Текущая версия | Запуск | Установка |
 | --- | --- | --- | --- |
-| SnowRunner CC HUD | [1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) | Загружается вместе с игрой, строка внутри штатного Scaleform HUD | [HUD](ingame/INSTALL_NATIVE.md) |
 | SnowRunner CC standalone | [1.0.1](https://github.com/TRSteep/SR_CruiseControl/releases/tag/standalone-v1.0.1) | Отдельный EXE со значком в трее | [Standalone](standalone/README.md) |
+| SnowRunner CC HUD | [1.1.4](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.1.4) | Загружается вместе с игрой, строка внутри штатного HUD | [HUD](ingame/INSTALL_NATIVE.md) |
 
-Полное название приложения — **SnowRunner Cruise control**, сокращённое — **SnowRunner CC**. HUD 1.1.4 добавляет переводы строки, установщик и исправление передачи газа W → F6 → отпускание W. Standalone 1.0.1 использует единое название приложения.
+Standalone 1.0.1 Запускается перед игрой (видно в трее) зажимает клавишу W, при разовом 
 
-**F6** включает и выключает удержание полного газа, **W/S/N** отключают его. Это удержание газа, а не поддержание заданной скорости или движение по маршруту. Выберите один вариант; одновременно использовать оба не нужно.
+Полное название приложения — **SnowRunner Cruise control**, сокращённое — **SnowRunner CC**. HUD 1.1.4 добавляет переводы строки, установщик и исправление передачи газа W → F6 → отпускание W. 
+
+
 
 ## SnowRunner CC HUD 1.1.4
 
