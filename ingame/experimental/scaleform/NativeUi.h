@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <initializer_list>
 
 namespace nativeui {
 // Exact observed ABI of the supported SnowRunner EXE, not a generic SDK type.
@@ -97,19 +98,27 @@ inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& br
     double px=0,py=0;
     if (!get(api,brake,"x",x) || !get(api,brake,"y",y) ||
         !asNumber(x.value,px) || !asNumber(y.value,py)) return Stage::NoPosition;
-    Owned row(api),bg(api),text(api),tf(api);
-    if (!empty(api,panel,row,"srAutopilotProbe")) return Stage::CreateFailed;
+    // Use the library-backed parent's symbol context. A new built-in Sprite
+    // was created successfully in v6, but could not resolve hudBtnBg.
+    Owned row(api),text(api),tf(api);
+    if (!attach(api,panel,row,"hudBrakeBtn","srAutopilotProbe")) return Stage::CreateFailed;
     const bool built = set(api,row.value,"x",number(px)) && set(api,row.value,"y",number(py-96)) &&
         set(api,row.value,"mouseEnabled",boolean(false)) && set(api,row.value,"mouseChildren",boolean(false)) &&
-        attach(api,row.value,bg,"hudBtnBg","srProbeBg") &&
-        attach(api,row.value,text,"hudBtnText","srProbeText") &&
-        set(api,text.value,"x",number(15)) && set(api,text.value,"y",number(6)) &&
+        set(api,row.value,"tabEnabled",boolean(false)) && set(api,row.value,"label",string("TEST")) &&
+        get(api,row.value,"tfCont",text) && object(text.value) &&
         get(api,text.value,"tf",tf) && object(tf.value) && set(api,tf.value,"text",string("TEST"));
     if (!built) {
         // Keep a failed child invisible until the HUD destroys its display
         // list. Avoid removeChild/Invoke on the unverified method-call ABI.
         set(api,row.value,"visible",boolean(false));
         return Stage::BuildFailed;
+    }
+    // The test row has no handbrake action or key binding. Suppress the
+    // inherited brake glyph and key badge instead of suggesting that it does.
+    for (const char* child : {"iconContainer","buttonAttach"}) {
+        Owned decoration(api);
+        if (get(api,row.value,child,decoration) && object(decoration.value))
+            set(api,decoration.value,"visible",boolean(false));
     }
     return Stage::Created;
 }
