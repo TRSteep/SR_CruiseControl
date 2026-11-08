@@ -4,7 +4,7 @@
 
 ## English
 
-Throttle hold in SnowRunner (tested on 44.1) for Windows x64.
+Throttle hold in SnowRunner (tested on 44.1) for Windows x64.  
 An attempt to make long snow and mud crawling convenient without pedals: the vehicle slowly but persistently pushes forward, and holding W constantly gets tiresome. SnowRunner CC holds the throttle until the driver turns it off.
 - **F6** turns full-throttle hold on and off.
 - **W** hands the throttle back to manual control.
@@ -21,7 +21,7 @@ There are two variants — choose the one you need:
 -----------------------
 ## Русский
 
-Удержание газа в SnowRunner (проверено на 44.1) для Windows x64. 
+Удержание газа в SnowRunner (проверено на 44.1) для Windows x64.  
 Попытка сделать удобным долгое перемешивание снега и грязи без педалей: автомобиль медленно, но упорно пробирается вперёд, а постоянно держать W надоедает. SnowRunner CC удерживает газ до отключения водителем.
 
 - **F6** включает и выключает удержание полного газа.
