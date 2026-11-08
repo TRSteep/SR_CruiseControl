@@ -30,6 +30,8 @@ Attach originalAttach = nullptr;
 nativeui::Get originalGet = nullptr;
 nativeui::Api ui{};
 bool enableTestRow = false;
+std::atomic<uintptr_t> attemptedPanel{0};
+thread_local bool insideUi = false;
 
 bool read(const void* from, void* to, size_t bytes) {
     SIZE_T copied = 0;
@@ -88,10 +90,11 @@ uintptr_t createHook(void* owner, const void* linkage) {
     snapshot(e, reinterpret_cast<const ObservedValue*>(reinterpret_cast<uintptr_t>(owner) + 0x58));
     publish(e);
     if (!std::strcmp(e.symbol,"defaultHud")) {
+        attemptedPanel.store(0);
         Event test{}; test.kind = 3; test.thread = GetCurrentThreadId();
         // Creation can run on a loading worker before the UI is ready.
         // Never enter the VM here. First observe the game's own field reads.
-        std::strcpy(test.symbol,enableTestRow ? "TEST-deferred" : "TEST-disabled");
+        std::strcpy(test.symbol,enableTestRow ? "TEST-await-brake-read" : "TEST-disabled");
         publish(test);
     }
     return result;
@@ -118,6 +121,23 @@ bool getHook(void* interfacePointer, void* parent, const char* name, ObservedVal
     }
     const bool success = originalGet(interfacePointer,parent,name,result,isDisplay);
     if (wanted) { e.success=success; snapshot(e,result); publish(e); }
+    if (enableTestRow && !insideUi && success && isDisplay && !std::strcmp(member,"brakeBtn")) {
+        ObservedValue brake;
+        const auto identity=reinterpret_cast<uintptr_t>(parent);
+        if (read(result,&brake,sizeof(brake)) && nativeui::object(brake) &&
+            attemptedPanel.exchange(identity)!=identity) {
+            // Borrow the parent's identity only during this game-owned call.
+            // No raw object is dereferenced later or retained across frames.
+            ObservedValue panel;
+            panel.type=0x4a; panel.interfacePointer=reinterpret_cast<uintptr_t>(interfacePointer); panel.object=identity;
+            insideUi=true;
+            const auto stage=nativeui::addTestRowToPanel(ui,panel,brake);
+            insideUi=false;
+            Event test{}; test.kind=3; test.thread=GetCurrentThreadId();
+            test.type=static_cast<unsigned>(stage); test.success=stage==nativeui::Stage::Created;
+            std::strcpy(test.symbol,"TEST-result"); publish(test);
+        }
+    }
     return success;
 }
 
@@ -173,7 +193,7 @@ DWORD WINAPI run(void*) {
     enableTestRow = GetPrivateProfileIntW(L"Probe",L"EnableTestRow",0,configPath.c_str()) == 1;
     logPath += L"SnowRunnerScaleformProbe.log";
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
-    std::fprintf(log, "Scaleform diagnostic probe 3; TEST request=%u (deferred); observer only, no VM calls or input writes.\n",enableTestRow); std::fflush(log);
+    std::fprintf(log, "Scaleform diagnostic probe 4; TEST=%u (after game-owned brakeBtn read); no input writes.\n",enableTestRow); std::fflush(log);
     char hash[65]{};
     const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!hashExe(hash) || std::strcmp(hash, expectedHash) || !compatible(image) || !bindUi(image)) {

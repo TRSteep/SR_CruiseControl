@@ -60,13 +60,13 @@ bool empty(void*,void* parent,nativeui::Value* out,const char* name,int depth) {
 }
 int main() {
     nativeui::Api api{get,set,invoke,release,attach,empty};
-    check(nativeui::addTestRow(api,object(1))==nativeui::Stage::Created);
+    check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::Created);
     check(references==0 && emptyCalls==1 && removals==0 && mouseDisabled==2 && wroteTest && std::abs(rowY+88)<.001);
-    duplicate=true; check(nativeui::addTestRow(api,object(1))==nativeui::Stage::Existing);
+    duplicate=true; check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::Existing);
     check(references==0 && emptyCalls==1); duplicate=false;
-    failText=true; check(nativeui::addTestRow(api,object(1))==nativeui::Stage::BuildFailed);
+    failText=true; check(nativeui::addTestRowToPanel(api,object(2),object(3))==nativeui::Stage::BuildFailed);
     check(references==0 && removals==1); failText=false;
-    missingPanel=true; check(nativeui::addTestRow(api,object(1))==nativeui::Stage::NoPanel);
+    missingPanel=true; check(nativeui::addTestRowToPanel(api,nativeui::Value{},object(3))==nativeui::Stage::NoPanel);
     check(references==0 && emptyCalls==2);
     std::printf("PASS: %u native UI ABI/lifetime/rollback checks\n",checks);
 }

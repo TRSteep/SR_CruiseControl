@@ -56,20 +56,21 @@ inline bool call(const Api& api,const Value& parent,const char* name,const Value
     return object(parent) && api.invoke(iface(parent),data(parent),&out.value,name,args,count,display(parent));
 }
 enum class Stage : unsigned { NoPanel=1,NoBrake,NoPosition,Existing,CreateFailed,BuildFailed,Created };
-// Must be called synchronously inside the game's HUD creation callback.
+// Candidate entry point after the game's own brakeBtn read has returned.
+// This is not yet validated in a live driving HUD. Never call from creation.
 // The display list owns the resulting child; no managed reference escapes.
-inline Stage addTestRow(const Api& api,const Value& hud) {
-    Owned panel(api),brake(api),x(api),y(api),existing(api);
-    if (!get(api,hud,"rightHudPanelContainer",panel) || !object(panel.value)) return Stage::NoPanel;
-    if (!get(api,panel.value,"brakeBtn",brake) || !object(brake.value)) return Stage::NoBrake;
+inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& brake) {
+    if (!object(panel)) return Stage::NoPanel;
+    if (!object(brake)) return Stage::NoBrake;
+    Owned x(api),y(api),existing(api);
     double px=0,py=0;
-    if (!get(api,brake.value,"x",x) || !get(api,brake.value,"y",y) ||
+    if (!get(api,brake,"x",x) || !get(api,brake,"y",y) ||
         !asNumber(x.value,px) || !asNumber(y.value,py)) return Stage::NoPosition;
     const Value name = string("srAutopilotProbe");
-    if (!call(api,panel.value,"getChildByName",&name,1,existing)) return Stage::CreateFailed;
+    if (!call(api,panel,"getChildByName",&name,1,existing)) return Stage::CreateFailed;
     if (object(existing.value)) return Stage::Existing;
     Owned row(api),bg(api),text(api),tf(api),stopped(api);
-    if (!api.empty(iface(panel.value),data(panel.value),&row.value,"srAutopilotProbe",-1) || !object(row.value)) return Stage::CreateFailed;
+    if (!api.empty(iface(panel),data(panel),&row.value,"srAutopilotProbe",-1) || !object(row.value)) return Stage::CreateFailed;
     const Value off = string("none");
     const bool built = set(api,row.value,"x",number(px)) && set(api,row.value,"y",number(py-96)) &&
         set(api,row.value,"mouseEnabled",boolean(false)) && set(api,row.value,"mouseChildren",boolean(false)) &&
@@ -80,7 +81,7 @@ inline Stage addTestRow(const Api& api,const Value& hud) {
         get(api,text.value,"tf",tf) && object(tf.value) && set(api,tf.value,"text",string("TEST"));
     if (!built) {
         Owned removed(api);
-        call(api,panel.value,"removeChild",&row.value,1,removed);
+        call(api,panel,"removeChild",&row.value,1,removed);
         return Stage::BuildFailed;
     }
     return Stage::Created;

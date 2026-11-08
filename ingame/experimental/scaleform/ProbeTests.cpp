@@ -18,8 +18,10 @@ bool fakeAttach(void* iface, void* parent, probe::ObservedValue* result, const c
 bool fakeGet(void* iface,void* parent,const char* member,probe::ObservedValue* out,bool display) {
     check(iface==reinterpret_cast<void*>(0x1234) && parent==reinterpret_cast<void*>(0x5678));
     check(!std::strcmp(member,"brakeBtn") && display);
-    out->type=0x4a; out->object=0x4321; return true;
+    out->type=0x4a; out->interfacePointer=0x1234; out->object=0x4321; return true;
 }
+unsigned nativeReads=0;
+bool missingPosition(void*,void*,const char*,nativeui::Value*,bool) { ++nativeReads; return false; }
 int main() {
     char name[128]{};
     probe::textAt(reinterpret_cast<const char*>(1),name); check(!*name);
@@ -41,5 +43,14 @@ int main() {
     probe::originalGet=fakeGet;
     check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
     check(probe::events[3].kind==4 && probe::events[3].success && probe::events[3].object==0x4321);
+    probe::enableTestRow=true;
+    const unsigned before=probe::claimed.load();
+    check(probe::createHook(owner,&s)==0xabcdef);
+    check(!std::strcmp(probe::events[before+1].symbol,"TEST-await-brake-read") && nativeReads==0);
+    probe::ui.get=missingPosition;
+    check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
+    check(nativeReads==1 && !probe::insideUi && output.object==0x4321);
+    check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
+    check(nativeReads==1); // A failed native attempt must not repeat every frame.
     std::printf("PASS: %u probe memory/ABI/forwarding checks\n",checks);
 }
