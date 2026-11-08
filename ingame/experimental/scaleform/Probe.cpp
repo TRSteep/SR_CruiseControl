@@ -9,6 +9,10 @@
 #include <string>
 #include "MinHook.h"
 #include "NativeUi.h"
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+#include "NativeSession.h"
+#include "NativeControl.h"
+#endif
 
 namespace probe {
 // Deliberately separate from the released autopilot. These offsets describe
@@ -32,6 +36,16 @@ nativeui::Api ui{};
 bool enableTestRow = false;
 std::atomic<uintptr_t> attemptedPanel{0};
 thread_local bool insideUi = false;
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+constexpr uintptr_t advanceRva=0x19960b0,destroyRva=0x19a1730;
+using Advance=float(*)(void*,float,unsigned,bool);
+using Destroy=uintptr_t(*)(void*,unsigned);
+Advance originalAdvance=nullptr;
+Destroy originalDestroy=nullptr;
+nativeui::Session sessions(ui);
+std::atomic<unsigned> nativeFrames{0};
+void registerRow(const ObservedValue& panel,const ObservedValue& row);
+#endif
 
 bool read(const void* from, void* to, size_t bytes) {
     SIZE_T copied = 0;
@@ -75,6 +89,34 @@ void traceUi(const char* operation,const char* member,bool success) {
     std::snprintf(e.instance,sizeof(e.instance),"%s",member);
     publish(e);
 }
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+void controlEvent(int state,const char* reason) {
+    Event e{};e.kind=6;e.thread=GetCurrentThreadId();e.type=state;e.success=state==1;
+    std::snprintf(e.symbol,sizeof(e.symbol),"CONTROL-%s",state==1?"ON":state==2?"ERROR":"OFF");
+    std::snprintf(e.instance,sizeof(e.instance),"%s",reason);publish(e);
+}
+void registerRow(const ObservedValue& panel,const ObservedValue& row) {
+    void* movie=nullptr;
+    if(read(reinterpret_cast<void*>(panel.interfacePointer+8),&movie,sizeof(movie))&&movie)sessions.add(movie,panel,row);
+}
+float advanceHook(void* movie,float delta,unsigned catchUp,bool capture) {
+    if(!insideUi && sessions.has(movie)) {
+        ++nativeFrames;
+        insideUi=true;
+        const auto label=nativecontrol::label();
+        nativecontrol::hudVisible=sessions.tick(movie,nativecontrol::state.load(),label.c_str());
+        nativecontrol::hudStamp=GetTickCount64();
+        insideUi=false;
+    }
+    return originalAdvance(movie,delta,catchUp,capture);
+}
+uintptr_t destroyHook(void* movie,unsigned flags) {
+    if(sessions.has(movie)) {
+        sessions.drop(movie);nativecontrol::hudVisible=false;nativecontrol::hudStamp=0;
+    }
+    return originalDestroy(movie,flags);
+}
+#endif
 bool relevant(const char* name) {
     // Bounded sample of other symbols establishes whether the hook executes.
     const auto index = observed.fetch_add(1, std::memory_order_relaxed);
@@ -137,7 +179,13 @@ bool getHook(void* interfacePointer, void* parent, const char* name, ObservedVal
             ObservedValue panel;
             panel.type=0x4a; panel.interfacePointer=reinterpret_cast<uintptr_t>(interfacePointer); panel.object=identity;
             insideUi=true;
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+            const auto label=nativecontrol::label();
+            const nativeui::RowOptions options{label.c_str(),48,registerRow};
+            const auto stage=nativeui::addTestRowToPanel(ui,panel,brake,options);
+#else
             const auto stage=nativeui::addTestRowToPanel(ui,panel,brake);
+#endif
             insideUi=false;
             Event test{}; test.kind=3; test.thread=GetCurrentThreadId();
             test.type=static_cast<unsigned>(stage); test.success=stage==nativeui::Stage::Created;
@@ -180,7 +228,10 @@ bool bindUi(unsigned char* image) {
     const Entry entries[] = {
         {0x1b5d4b0,{0x48,0x89,0x5c,0x24}}, {0x1b5d870,{0x48,0x89,0x5c,0x24}},
         {0x1b5dcb0,{0x4c,0x89,0x44,0x24}}, {0x1b5d0f0,{0x40,0x53,0x48,0x83}},
-        {0x1b61560,{0x4c,0x8b,0xdc,0x55}}
+        {0x1b61560,{0x4c,0x8b,0xdc,0x55}}, {0x1b5d070,{0x48,0x89,0x5c,0x24}}
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+        ,{advanceRva,{0x44,0x88,0x4c,0x24}}, {destroyRva,{0x48,0x89,0x5c,0x24}}
+#endif
     };
     for (const auto& entry:entries) {
         unsigned char bytes[4];
@@ -188,18 +239,32 @@ bool bindUi(unsigned char* image) {
     }
     ui = {reinterpret_cast<nativeui::Get>(image+0x1b5d4b0),reinterpret_cast<nativeui::Set>(image+0x1b5d870),
         reinterpret_cast<nativeui::Invoke>(image+0x1b5dcb0),reinterpret_cast<nativeui::Release>(image+0x1b5d0f0),
-        reinterpret_cast<nativeui::Attach>(image+attachRva),reinterpret_cast<nativeui::Empty>(image+0x1b61560),traceUi};
+        reinterpret_cast<nativeui::Attach>(image+attachRva),reinterpret_cast<nativeui::Empty>(image+0x1b61560),traceUi,
+        reinterpret_cast<nativeui::Retain>(image+0x1b5d070)};
     return true;
 }
 HMODULE module = nullptr;
 DWORD WINAPI run(void*) {
     wchar_t path[32768]{}; GetModuleFileNameW(module, path, 32768);
     std::wstring logPath(path); logPath.resize(logPath.find_last_of(L"\\/") + 1);
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    const std::wstring configPath=logPath+L"SnowRunnerNativeAutopilot.ini";
+    enableTestRow=GetPrivateProfileIntW(L"Autopilot",L"Enabled",1,configPath.c_str())!=0;
+    nativecontrol::toggleKey=GetPrivateProfileIntW(L"Autopilot",L"ToggleKey",VK_F6,configPath.c_str());
+    if(nativecontrol::toggleKey<VK_F2||nativecontrol::toggleKey>VK_F12||nativecontrol::toggleKey==VK_F4)nativecontrol::toggleKey=VK_F6;
+    logPath+=L"SnowRunnerNativeAutopilot.log";
+#else
     const std::wstring configPath = logPath + L"SnowRunnerScaleformProbe.ini";
     enableTestRow = GetPrivateProfileIntW(L"Probe",L"EnableTestRow",0,configPath.c_str()) == 1;
     logPath += L"SnowRunnerScaleformProbe.log";
+#endif
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
-    std::fprintf(log, "Scaleform diagnostic probe 7; TEST=%u (native row attached to library-backed panel); no AS3 Invoke or input writes.\n",enableTestRow); std::fflush(log);
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    std::fprintf(log,"Native Scaleform autopilot 8; enabled=%u; F-key=%u; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
+#else
+    std::fprintf(log, "Scaleform diagnostic probe 7; TEST=%u (native row attached to library-backed panel); no AS3 Invoke or input writes.\n",enableTestRow);
+#endif
+    std::fflush(log);
     char hash[65]{};
     const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!hashExe(hash) || std::strcmp(hash, expectedHash) || !compatible(image) || !bindUi(image)) {
@@ -209,21 +274,48 @@ DWORD WINAPI run(void*) {
     const auto init = MH_Initialize();
     void* create = image + createRva; void* attach = image + attachRva; void* get = image + getRva;
     MH_STATUS a = MH_UNKNOWN, b = MH_UNKNOWN, c = MH_UNKNOWN, enabled = MH_UNKNOWN;
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    void* advance=image+advanceRva;void* destroy=image+destroyRva;
+    MH_STATUS d=MH_UNKNOWN,e=MH_UNKNOWN;
+#endif
     if (init == MH_OK || init == MH_ERROR_ALREADY_INITIALIZED) {
         a = MH_CreateHook(create, reinterpret_cast<void*>(createHook), reinterpret_cast<void**>(&originalCreate));
         b = MH_CreateHook(attach, reinterpret_cast<void*>(attachHook), reinterpret_cast<void**>(&originalAttach));
         c = MH_CreateHook(get, reinterpret_cast<void*>(getHook), reinterpret_cast<void**>(&originalGet));
-        if (a == MH_OK && b == MH_OK && c == MH_OK && MH_QueueEnableHook(create) == MH_OK &&
-            MH_QueueEnableHook(attach) == MH_OK && MH_QueueEnableHook(get) == MH_OK)
-            enabled = MH_ApplyQueued();
+        bool complete=a==MH_OK&&b==MH_OK&&c==MH_OK;
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+        d=MH_CreateHook(advance,reinterpret_cast<void*>(advanceHook),reinterpret_cast<void**>(&originalAdvance));
+        e=MH_CreateHook(destroy,reinterpret_cast<void*>(destroyHook),reinterpret_cast<void**>(&originalDestroy));
+        complete=complete&&d==MH_OK&&e==MH_OK;
+#endif
+        bool queued=complete&&MH_QueueEnableHook(create)==MH_OK&&MH_QueueEnableHook(attach)==MH_OK&&MH_QueueEnableHook(get)==MH_OK;
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+        queued=queued&&MH_QueueEnableHook(advance)==MH_OK&&MH_QueueEnableHook(destroy)==MH_OK;
+#endif
+        if(queued)enabled=MH_ApplyQueued();
     }
     std::fprintf(log, "Hooks init=%d create=%d attach=%d get=%d enabled=%d\n", init,a,b,c,enabled); std::fflush(log);
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    std::fprintf(log,"Native frame hooks advance=%d destroy=%d\n",d,e);std::fflush(log);
+#endif
     if (enabled != MH_OK) {
         if (a == MH_OK) { MH_DisableHook(create); MH_RemoveHook(create); }
         if (b == MH_OK) { MH_DisableHook(attach); MH_RemoveHook(attach); }
         if (c == MH_OK) { MH_DisableHook(get); MH_RemoveHook(get); }
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+        if(d==MH_OK){MH_DisableHook(advance);MH_RemoveHook(advance);}
+        if(e==MH_OK){MH_DisableHook(destroy);MH_RemoveHook(destroy);}
+#endif
         std::fclose(log); return 1;
     }
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    if(enableTestRow) {
+        nativecontrol::notify=controlEvent;
+        const auto input=CreateThread(nullptr,0,nativecontrol::inputThread,module,0,nullptr);
+        if(input){CloseHandle(input);std::fprintf(log,"Native input thread started.\n");}
+        else std::fprintf(log,"Native input thread failed; throttle unavailable.\n");
+    }
+#endif
     unsigned consumed = 0, ticks = 0;
     for (;;) {
         while (consumed < capacity && ready[consumed].load(std::memory_order_acquire)) {
@@ -234,6 +326,9 @@ DWORD WINAPI run(void*) {
                 e.type,static_cast<unsigned long long>(e.interfacePointer),static_cast<unsigned long long>(e.object),e.depth,e.success);
         }
         if (++ticks % 40 == 0) std::fprintf(log, "Heartbeat observed=%u queued=%u written=%u\n", observed.load(),claimed.load(),consumed);
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+        if(ticks%40==0)std::fprintf(log,"Native frames=%u HUD=%u state=%d\n",nativeFrames.load(),nativecontrol::hudVisible.load(),nativecontrol::state.load());
+#endif
         std::fflush(log); Sleep(250);
     }
 }
@@ -245,6 +340,9 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
         HANDLE thread = CreateThread(nullptr,0,probe::run,nullptr,0,nullptr);
         if (thread) CloseHandle(thread);
     }
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    else if(reason==DLL_PROCESS_DETACH)nativecontrol::shutdown();
+#endif
     return TRUE;
 }
 #endif

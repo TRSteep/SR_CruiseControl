@@ -22,6 +22,10 @@ bool fakeGet(void* iface,void* parent,const char* member,probe::ObservedValue* o
 }
 unsigned nativeReads=0;
 bool missingPosition(void*,void*,const char*,nativeui::Value*,bool) { ++nativeReads; return false; }
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+float fakeAdvance(void* movie,float delta,unsigned count,bool capture){check(movie==reinterpret_cast<void*>(1)&&delta==.125f&&count==2&&capture);return 3.125f;}
+uintptr_t fakeDestroy(void* movie,unsigned flags){check(movie==reinterpret_cast<void*>(1)&&flags==1);return reinterpret_cast<uintptr_t>(movie);}
+#endif
 int main() {
     char name[128]{};
     probe::textAt(reinterpret_cast<const char*>(1),name); check(!*name);
@@ -52,5 +56,10 @@ int main() {
     check(nativeReads==1 && !probe::insideUi && output.object==0x4321);
     check(probe::getHook(reinterpret_cast<void*>(0x1234),reinterpret_cast<void*>(0x5678),"brakeBtn",&output,true));
     check(nativeReads==1); // A failed native attempt must not repeat every frame.
+#ifdef SCALEFORM_NATIVE_AUTOPILOT
+    probe::originalAdvance=fakeAdvance;probe::originalDestroy=fakeDestroy;
+    check(probe::advanceHook(reinterpret_cast<void*>(1),.125f,2,true)==3.125f);
+    check(probe::destroyHook(reinterpret_cast<void*>(1),1)==1);
+#endif
     std::printf("PASS: %u probe memory/ABI/forwarding checks\n",checks);
 }

@@ -19,9 +19,11 @@ using Invoke = bool(*)(void*,void*,Value*,const char*,const Value*,unsigned,bool
 using Release = void(*)(void*,Value*,void*);
 using Attach = bool(*)(void*,void*,Value*,const char*,const char*,int,const void*);
 using Empty = bool(*)(void*,void*,Value*,const char*,int);
+using Retain = void(*)(void*,Value*,void*);
 struct Api {
     Get get; Set set; Invoke invoke; Release release; Attach attach; Empty empty;
     void (*trace)(const char* operation,const char* member,bool success) = nullptr;
+    Retain retain = nullptr;
 };
 inline void trace(const Api& api,const char* operation,const char* member,bool success=false) {
     if (api.trace) api.trace(operation,member,success);
@@ -86,10 +88,15 @@ inline bool empty(const Api& api,const Value& parent,Owned& out,const char* inst
     trace(api,"sprite.end",instance,okay); return okay && object(out.value);
 }
 enum class Stage : unsigned { NoPanel=1,NoBrake,NoPosition,Existing,CreateFailed,BuildFailed,Created };
+struct RowOptions {
+    const char* label = "TEST";
+    double step = 96;
+    void (*created)(const Value& panel,const Value& row) = nullptr;
+};
 // Candidate entry point after the game's own brakeBtn read has returned.
 // This is not yet validated in a live driving HUD. Never call from creation.
 // The display list owns the resulting child; no managed reference escapes.
-inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& brake) {
+inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& brake,const RowOptions& options = {}) {
     if (!object(panel)) return Stage::NoPanel;
     if (!object(brake)) return Stage::NoBrake;
     // The caller gates this to one attempt per parent. Do not Invoke AS3
@@ -102,11 +109,11 @@ inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& br
     // was created successfully in v6, but could not resolve hudBtnBg.
     Owned row(api),text(api),tf(api);
     if (!attach(api,panel,row,"hudBrakeBtn","srAutopilotProbe")) return Stage::CreateFailed;
-    const bool built = set(api,row.value,"x",number(px)) && set(api,row.value,"y",number(py-96)) &&
+    const bool built = set(api,row.value,"x",number(px)) && set(api,row.value,"y",number(py-options.step)) &&
         set(api,row.value,"mouseEnabled",boolean(false)) && set(api,row.value,"mouseChildren",boolean(false)) &&
-        set(api,row.value,"tabEnabled",boolean(false)) && set(api,row.value,"label",string("TEST")) &&
+        set(api,row.value,"tabEnabled",boolean(false)) && set(api,row.value,"label",string(options.label)) &&
         get(api,row.value,"tfCont",text) && object(text.value) &&
-        get(api,text.value,"tf",tf) && object(tf.value) && set(api,tf.value,"text",string("TEST"));
+        get(api,text.value,"tf",tf) && object(tf.value) && set(api,tf.value,"text",string(options.label));
     if (!built) {
         // Keep a failed child invisible until the HUD destroys its display
         // list. Avoid removeChild/Invoke on the unverified method-call ABI.
@@ -120,6 +127,7 @@ inline Stage addTestRowToPanel(const Api& api,const Value& panel,const Value& br
         if (get(api,row.value,child,decoration) && object(decoration.value))
             set(api,decoration.value,"visible",boolean(false));
     }
+    if (options.created) options.created(panel,row.value);
     return Stage::Created;
 }
 }
