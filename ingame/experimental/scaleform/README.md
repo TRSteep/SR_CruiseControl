@@ -4,6 +4,8 @@
 
 ## Сборка и файлы
 
+Опциональный `-Autopilot -ResolveSignatures` включает новый поиск функций и собирает экспериментальный HUD в отдельный `ingame/build/compatibility/native-hud`. `-ReferenceExe <путь>` дополнительно проверяет привязку на частной неисполняемой копии проверенного Epic EXE. Стандартный режим сборки и совместимость готового релиза остаются прежними. [Диагностика и инструкция для Steam-тестера](../../compatibility/README.md).
+
 `build.ps1 -Autopilot` собирает `SnowRunnerNativeAutopilot.asi`; `-Autopilot -Package` дополнительно создаёт `SnowRunnerCC-HUD-ingame-v1.1.5-win-x64.zip`. Разработческий ZIP содержит ASI, INI, эту техническую инструкцию и лицензию MinHook. Полный GitHub-релиз дополнительно включает ASI-загрузчик, пользовательскую инструкцию, сведения о сборке и контрольные суммы.
 
 Настройки: `SnowRunnerNativeAutopilot.ini`, секция `[Autopilot]`, `Enabled=1`, `ToggleKey=117` (F6). Допустимы F2–F12, кроме F4; после изменения нужен перезапуск. Журнал — `SnowRunnerNativeAutopilot.log`. Имена сохранены для совместимости при переименовании приложения. Версия HUD хранится в `ingame/VERSION` и передаётся компилятору скриптом сборки.

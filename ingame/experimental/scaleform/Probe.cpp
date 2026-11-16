@@ -9,6 +9,10 @@
 #include <string>
 #include "MinHook.h"
 #include "NativeUi.h"
+#if defined(SR_CC_SIGNATURE_DIAGNOSTIC) || defined(SR_CC_SIGNATURE_RESOLVER)
+#include "../../compatibility/CompatibilityReport.h"
+#include "../../compatibility/ExperimentalPolicy.h"
+#endif
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
 #include "SnowRunnerCCVersion.h"
 #include "NativeSession.h"
@@ -35,6 +39,9 @@ Attach originalAttach = nullptr;
 nativeui::Get originalGet = nullptr;
 nativeui::Api ui{};
 bool enableTestRow = false;
+#ifdef SR_CC_ALLOW_UNREVIEWED
+FILE* checkpointLog=nullptr;
+#endif
 std::atomic<uintptr_t> attemptedPanel{0};
 thread_local bool insideUi = false;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
@@ -88,6 +95,9 @@ void publish(const Event& event) {
     events[index] = event; ready[index].store(true, std::memory_order_release);
 }
 void traceUi(const char* operation,const char* member,bool success) {
+#ifdef SR_CC_ALLOW_UNREVIEWED
+    if(checkpointLog){std::fprintf(checkpointLog,"CHECKPOINT thread=%lu operation=%s member=%s ok=%u\n",GetCurrentThreadId(),operation,member,success);std::fflush(checkpointLog);}
+#endif
     Event e{}; e.kind=5; e.thread=GetCurrentThreadId(); e.success=success;
     std::snprintf(e.symbol,sizeof(e.symbol),"UI-%s",operation);
     std::snprintf(e.instance,sizeof(e.instance),"%s",member);
@@ -252,22 +262,67 @@ bool bindUi(unsigned char* image) {
         reinterpret_cast<nativeui::Retain>(image+0x1b5d070)};
     return true;
 }
+#ifdef SR_CC_SIGNATURE_RESOLVER
+bool bindResolvedUi(unsigned char* image,const srcompat::Resolution& resolved) {
+    if(!resolved.candidate())return false;
+    for(const auto& symbol:srcompat::symbols) {
+        const auto pattern=srcompat::pattern(symbol.pattern);
+        std::vector<unsigned char> actual(pattern.size());
+        if(!read(image+resolved.addresses.at(symbol.name),actual.data(),actual.size()))return false;
+        for(size_t i=0;i<pattern.size();++i)if(pattern[i]>=0&&pattern[i]!=actual[i])return false;
+    }
+    uintptr_t destructor=0,advance=0;
+    if(!read(image+resolved.vtableRva,&destructor,8)||!read(image+resolved.vtableRva+24*8,&advance,8)||
+       destructor!=reinterpret_cast<uintptr_t>(image+resolved.addresses.at("destroy"))||advance!=reinterpret_cast<uintptr_t>(image+resolved.addresses.at("advance")))return false;
+    ui={reinterpret_cast<nativeui::Get>(image+resolved.addresses.at("get")),reinterpret_cast<nativeui::Set>(image+resolved.addresses.at("set")),
+        reinterpret_cast<nativeui::Invoke>(image+resolved.addresses.at("invoke")),reinterpret_cast<nativeui::Release>(image+resolved.addresses.at("release")),
+        reinterpret_cast<nativeui::Attach>(image+resolved.addresses.at("attach")),reinterpret_cast<nativeui::Empty>(image+resolved.addresses.at("empty")),traceUi,
+        reinterpret_cast<nativeui::Retain>(image+resolved.addresses.at("retain"))};
+    return true;
+}
+#endif
 HMODULE module = nullptr;
 DWORD WINAPI run(void*) {
     wchar_t path[32768]{}; GetModuleFileNameW(module, path, 32768);
     std::wstring logPath(path); logPath.resize(logPath.find_last_of(L"\\/") + 1);
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
+#ifdef SR_CC_ALLOW_UNREVIEWED
+    const std::wstring configPath=logPath+L"SnowRunnerCCExperimental.ini";
+    const int experimentStage=GetPrivateProfileIntW(L"Compatibility",L"Stage",0,configPath.c_str());
+#else
     const std::wstring configPath=logPath+L"SnowRunnerNativeAutopilot.ini";
+#endif
     enableTestRow=GetPrivateProfileIntW(L"Autopilot",L"Enabled",1,configPath.c_str())!=0;
     nativecontrol::toggleKey=GetPrivateProfileIntW(L"Autopilot",L"ToggleKey",VK_F6,configPath.c_str());
     if(nativecontrol::toggleKey<VK_F2||nativecontrol::toggleKey>VK_F12||nativecontrol::toggleKey==VK_F4)nativecontrol::toggleKey=VK_F6;
+#ifdef SR_CC_ALLOW_UNREVIEWED
+    const auto stage=srcompat::stagePolicy(experimentStage,enableTestRow);
+    enableTestRow=stage.hud;
+    logPath+=L"SnowRunnerCCExperimental.log";
+#else
     logPath+=L"SnowRunnerNativeAutopilot.log";
+#endif
+#elif defined(SR_CC_SIGNATURE_DIAGNOSTIC)
+    enableTestRow=false;
+    logPath+=L"SnowRunnerCCCompatibility.log";
 #else
     const std::wstring configPath = logPath + L"SnowRunnerScaleformProbe.ini";
     enableTestRow = GetPrivateProfileIntW(L"Probe",L"EnableTestRow",0,configPath.c_str()) == 1;
     logPath += L"SnowRunnerScaleformProbe.log";
 #endif
     FILE* log = _wfopen(logPath.c_str(), L"w"); if (!log) return 1;
+#ifdef SR_CC_SIGNATURE_DIAGNOSTIC
+    wchar_t exe[32768]{};GetModuleFileNameW(nullptr,exe,32768);
+    try{srcompat::scanFile(exe,log);}catch(const std::exception& error){std::fprintf(log,"Result=ERROR\nReason=%s\nNo hooks or game changes.\n",error.what());}
+    std::fclose(log);return 0;
+#else
+    bool framesEnabled=true,inputEnabled=true;
+#ifdef SR_CC_ALLOW_UNREVIEWED
+    checkpointLog=log;
+    std::fprintf(log,"EXPERIMENTAL hash allowlist DISABLED; Stage=%d (0=observe,1=HUD,2=control)\n",experimentStage);std::fflush(log);
+    if(!stage.valid){std::fprintf(log,"Invalid Stage. No hooks installed.\n");checkpointLog=nullptr;std::fclose(log);return 1;}
+    framesEnabled=stage.frames;inputEnabled=stage.input;
+#endif
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
     std::fprintf(log,"SnowRunner Cruise control (SnowRunner CC) HUD " SNOWRUNNER_CC_VERSION "; enabled=%u; F-key=%u; native vector cruise icon; no overlay.\n",enableTestRow,nativecontrol::toggleKey);
 #else
@@ -276,15 +331,45 @@ DWORD WINAPI run(void*) {
     std::fflush(log);
     char hash[65]{};
     const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+#ifdef SR_CC_SIGNATURE_RESOLVER
+    srcompat::Resolution resolved;
+    try {
+        wchar_t exe[32768]{};GetModuleFileNameW(nullptr,exe,32768);
+        auto bytes=srcompat::readExecutable(exe);const auto diskHash=srcompat::sha256(bytes);
+        const auto file=srcompat::Image::parse(std::move(bytes));resolved=srcompat::resolve(file);
+        std::fprintf(log,"Experimental signature resolver: candidates=%u hash=%s\n",resolved.candidate(),diskHash.c_str());
+        constexpr bool allowUnreviewed=
+#ifdef SR_CC_ALLOW_UNREVIEWED
+            true;
+#else
+            false;
+#endif
+        std::fprintf(log,"StartupPhase=scan-report (scanner only; configured hooks follow)\n");
+        srcompat::writeReport(log,file,resolved,diskHash);
+        if(!srcompat::allowHooks(diskHash==expectedHash,allowUnreviewed,resolved.candidate())){std::fprintf(log,"Missing/ambiguous signatures or unreviewed ABI. No hooks installed.\n");std::fclose(log);return 1;}
+        std::fprintf(log,"StartupPhase=validate-loaded-image reviewed=%u allowUnreviewed=%u\n",diskHash==expectedHash,allowUnreviewed);std::fflush(log);
+        if(!hashExe(hash)||diskHash!=hash||!bindResolvedUi(image,resolved)){std::fprintf(log,"Signature/loaded-image validation failed. No hooks installed.\n");std::fclose(log);return 1;}
+    }catch(const std::exception& error){std::fprintf(log,"Resolver error: %s. No hooks installed.\n",error.what());std::fclose(log);return 1;}
+#else
     if (!hashExe(hash) || std::strcmp(hash, expectedHash) || !compatible(image) || !bindUi(image)) {
         std::fprintf(log, "Unsupported EXE. SHA256=%s. No hooks installed.\n", hash); std::fclose(log); return 1;
     }
+#endif
     std::fprintf(log, "Verified EXE %s\n", hash);
+    std::fprintf(log,"StartupPhase=install-hooks frames=%u input=%u hud=%u\n",framesEnabled,inputEnabled,enableTestRow);std::fflush(log);
     const auto init = MH_Initialize();
+#ifdef SR_CC_SIGNATURE_RESOLVER
+    void* create=image+resolved.addresses.at("create");void* attach=image+resolved.addresses.at("attach");void* get=image+resolved.addresses.at("get");
+#else
     void* create = image + createRva; void* attach = image + attachRva; void* get = image + getRva;
+#endif
     MH_STATUS a = MH_UNKNOWN, b = MH_UNKNOWN, c = MH_UNKNOWN, enabled = MH_UNKNOWN;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
+#ifdef SR_CC_SIGNATURE_RESOLVER
+    void* advance=image+resolved.addresses.at("advance");void* destroy=image+resolved.addresses.at("destroy");
+#else
     void* advance=image+advanceRva;void* destroy=image+destroyRva;
+#endif
     MH_STATUS d=MH_UNKNOWN,e=MH_UNKNOWN;
 #endif
     if (init == MH_OK || init == MH_ERROR_ALREADY_INITIALIZED) {
@@ -293,13 +378,15 @@ DWORD WINAPI run(void*) {
         c = MH_CreateHook(get, reinterpret_cast<void*>(getHook), reinterpret_cast<void**>(&originalGet));
         bool complete=a==MH_OK&&b==MH_OK&&c==MH_OK;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
+        if(framesEnabled){
         d=MH_CreateHook(advance,reinterpret_cast<void*>(advanceHook),reinterpret_cast<void**>(&originalAdvance));
         e=MH_CreateHook(destroy,reinterpret_cast<void*>(destroyHook),reinterpret_cast<void**>(&originalDestroy));
         complete=complete&&d==MH_OK&&e==MH_OK;
+        }
 #endif
         bool queued=complete&&MH_QueueEnableHook(create)==MH_OK&&MH_QueueEnableHook(attach)==MH_OK&&MH_QueueEnableHook(get)==MH_OK;
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-        queued=queued&&MH_QueueEnableHook(advance)==MH_OK&&MH_QueueEnableHook(destroy)==MH_OK;
+        if(framesEnabled)queued=queued&&MH_QueueEnableHook(advance)==MH_OK&&MH_QueueEnableHook(destroy)==MH_OK;
 #endif
         if(queued)enabled=MH_ApplyQueued();
     }
@@ -318,7 +405,7 @@ DWORD WINAPI run(void*) {
         std::fclose(log); return 1;
     }
 #ifdef SCALEFORM_NATIVE_AUTOPILOT
-    if(enableTestRow) {
+    if(enableTestRow&&inputEnabled) {
         nativecontrol::notify=controlEvent;
         const auto input=CreateThread(nullptr,0,nativecontrol::inputThread,module,0,nullptr);
         if(input){CloseHandle(input);std::fprintf(log,"Native input thread started.\n");}
@@ -340,6 +427,7 @@ DWORD WINAPI run(void*) {
 #endif
         std::fflush(log); Sleep(250);
     }
+#endif // diagnostic-only build excludes the hook installation path
 }
 }
 #ifndef SCALEFORM_PROBE_TEST
