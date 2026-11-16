@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 $root=Split-Path $PSScriptRoot -Parent
 $repo=Split-Path $root -Parent
-if($RebuildHud){& (Join-Path $root 'experimental\scaleform\build.ps1') -Autopilot; if($LASTEXITCODE -ne 0){throw 'HUD build failed.'}}
+if($RebuildHud){& (Join-Path $root 'compatibility\build.ps1'); if($LASTEXITCODE -ne 0){throw 'Scanner build failed.'}; & (Join-Path $root 'experimental\scaleform\build.ps1') -Autopilot; if($LASTEXITCODE -ne 0){throw 'HUD build failed.'}}
 $version=[IO.File]::ReadAllText((Join-Path $root 'VERSION')).Trim()
 if($version -notmatch '^\d+\.\d+\.\d+$'){throw 'Invalid HUD version.'}
 $out=Join-Path $root "build\installer\$version"
@@ -24,7 +24,8 @@ $entries=@($hashes.GetEnumerator()|ForEach-Object{'{ "'+$_.Key+'", "'+$_.Value+'
 $profiles=[regex]::Matches([IO.File]::ReadAllText((Join-Path $root 'compatibility\ReviewedBuilds.inc')),'SR_CC_REVIEWED\("([0-9a-f]{64})", "([^"]+)"\)')
 $reviewedHashes=@($profiles | ForEach-Object {$_.Groups[1].Value})
 if($reviewedHashes.Count -lt 1 -or @($reviewedHashes | Select-Object -Unique).Count -ne $reviewedHashes.Count){throw 'Invalid reviewed executable profiles.'}
-$hashLiterals=($reviewedHashes | ForEach-Object {'"'+$_+'"'}) -join ','
+$diagnostic=Join-Path $root 'build\compatibility\SnowRunnerCC-Compatibility.exe'
+$diagnosticHash=(Get-FileHash -LiteralPath $diagnostic).Hash.ToLowerInvariant()
 $metadata=@"
 using System.Collections.Generic;
 using System.Reflection;
@@ -35,7 +36,7 @@ using System.Reflection;
 namespace SnowRunnerCC.Setup {
 internal static class BuildInfo {
 internal const string Version="$version";
-internal static readonly string[] SupportedExeHashes=new string[] { $hashLiterals };
+internal const string DiagnosticSha256="$diagnosticHash";
 internal static readonly Dictionary<string,string> Hashes=new Dictionary<string,string> { $entries };
 }}
 "@
@@ -49,6 +50,7 @@ if($LASTEXITCODE -ne 0){throw 'Installer tests failed.'}
 $exe=Join-Path $out "SnowRunnerCC-HUD-$version-Setup.exe"
 $resources=@($files.GetEnumerator()|ForEach-Object{"/resource:$($_.Value),SnowRunnerCC.$($_.Key)"})
 $extras=[ordered]@{
+ 'SnowRunnerCC-Compatibility.exe'=$diagnostic
  'app.ico'=(Join-Path $PSScriptRoot 'assets\app.ico')
  'INSTALL_NATIVE.md'=(Join-Path $root 'INSTALL_NATIVE.md')
  'MODIO_DESCRIPTION_EN.md'=(Join-Path $root 'MODIO_DESCRIPTION_EN.md')
@@ -62,6 +64,8 @@ $smoke=Start-Process -FilePath $exe -ArgumentList '--verify-package' -WindowStyl
 if($smoke.ExitCode -ne 0){throw 'Embedded payload verification failed.'}
 $info=@{product='SnowRunner Cruise control';shortName='SnowRunner CC';variant='HUD';version=$version;sourceCommit=(git -C $repo rev-parse HEAD).Trim();sourceTreeDirty=[bool](git -C $repo status --porcelain);payloadSha256=$hashes;installerSha256=(Get-FileHash -LiteralPath $exe).Hash.ToLowerInvariant()}
 $info.reviewedExeSha256=$reviewedHashes
+$info.hashAllowlist=$false
+$info.diagnosticSha256=$diagnosticHash
 [IO.File]::WriteAllText((Join-Path $out 'BUILD_INFO.json'),($info|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
 Copy-Item -LiteralPath (Join-Path $root 'INSTALL_NATIVE.md'),(Join-Path $root 'MODIO_DESCRIPTION_EN.md') -Destination $out
 $licenses=Join-Path $out 'licenses'

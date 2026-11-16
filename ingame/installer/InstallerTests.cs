@@ -12,8 +12,7 @@ namespace SnowRunnerCC.Setup
         private static byte[] Bytes(string s) { return Encoding.UTF8.GetBytes(s); }
         private static Package Fixture()
         {
-            var p = new Package { Version = "1.2.0" };
-            p.SupportedExeHashes.Add(Package.Hash(Bytes("supported game")));
+            var p = new Package { Version = "1.2.1" };
             foreach (string name in new string[] { Package.Asi, Package.Ini, Package.Loader })
             { p.Files[name] = Bytes("new " + name); p.Hashes[name] = Package.Hash(p.Files[name]); }
             return p;
@@ -24,7 +23,7 @@ namespace SnowRunnerCC.Setup
             Directory.CreateDirectory(bin); File.WriteAllBytes(Path.Combine(bin, "SnowRunner.exe"), Bytes("supported game"));
             return bin;
         }
-        private static Installer Service(Package p, bool busy = false) { return new Installer(p, delegate { return busy; }, null); }
+        private static Installer Service(Package p, bool busy = false) { return new Installer(p, delegate { return busy; }, null, delegate(string exe) { return File.ReadAllText(exe) != "unsupported exe"; }); }
         private static void Reject(Action action)
         {
             bool rejected = false;
@@ -96,12 +95,18 @@ namespace SnowRunnerCC.Setup
             }
             bin = Game("second-reviewed-build");
             File.WriteAllBytes(Path.Combine(bin, "SnowRunner.exe"), Bytes("second reviewed game"));
-            package.SupportedExeHashes.Add(Package.Hash(Bytes("second reviewed game")));
             Service(package).Install(bin);
             Check(File.Exists(Path.Combine(bin, Package.Asi)));
             Service(package).Uninstall(bin);
             Check(!File.Exists(Path.Combine(bin, Package.Asi)));
-            Check(!package.Supports(Package.Hash(Bytes("unreviewed game"))));
+            bin = Game("unreviewed-hash-valid-structure");
+            File.WriteAllText(Path.Combine(bin, "SnowRunner.exe"), "unreviewed game");
+            Service(package).Install(bin);
+            Check(File.Exists(Path.Combine(bin, Package.Asi)));
+            bin = Game("missing-validator");
+            string noValidator = bin;
+            Reject(delegate { new Installer(package, delegate { return false; }, null, null).Install(noValidator); });
+            Check(!File.Exists(Path.Combine(bin, Package.Asi)));
             // Removal must still work after the game itself updates.
             bin = Game("game-updated"); Service(package).Install(bin);
             File.WriteAllText(Path.Combine(bin, "SnowRunner.exe"), "new game version");

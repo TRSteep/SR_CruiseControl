@@ -27,10 +27,38 @@ namespace SnowRunnerCC.Setup
         internal static Package BundledPackage()
         {
             var package = new Package { Version = BuildInfo.Version };
-            package.SupportedExeHashes.AddRange(BuildInfo.SupportedExeHashes);
             foreach (string name in new string[] { Package.Asi, Package.Ini, Package.Loader })
             { package.Files[name] = Resource(name); package.Hashes[name] = BuildInfo.Hashes[name]; }
-            package.Verify(); return package;
+            package.Verify();
+            if (Package.Hash(Resource("SnowRunnerCC-Compatibility.exe")) != BuildInfo.DiagnosticSha256) throw new InvalidDataException("Damaged compatibility scanner.");
+            return package;
+        }
+        internal static bool ValidateExecutable(string executable)
+        {
+            byte[] scanner = Resource("SnowRunnerCC-Compatibility.exe");
+            if (Package.Hash(scanner) != BuildInfo.DiagnosticSha256) throw new InvalidDataException("Damaged embedded compatibility scanner.");
+            string temporary = Path.Combine(Path.GetTempPath(), "SnowRunnerCC-check-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(temporary);
+            string tool = Path.Combine(temporary, "SnowRunnerCC-Compatibility.exe"), report = Path.Combine(temporary, "report.log");
+            try
+            {
+                File.WriteAllBytes(tool, scanner);
+                var start = new ProcessStartInfo(tool, "\"" + executable + "\" --output \"" + report + "\"") {
+                    UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden
+                };
+                using (var process = Process.Start(start))
+                {
+                    if (!process.WaitForExit(60000)) { process.Kill(); process.WaitForExit(); throw new IOException("Compatibility scan timed out. Game files were preserved."); }
+                    return process.ExitCode == 0;
+                }
+            }
+            finally
+            {
+                // Only files created in this unique private directory are removed.
+                if (File.Exists(report)) File.Delete(report);
+                if (File.Exists(tool)) File.Delete(tool);
+                Directory.Delete(temporary);
+            }
         }
         [STAThread]
         private static int Main(string[] args)
@@ -39,6 +67,7 @@ namespace SnowRunnerCC.Setup
             {
                 BundledPackage();
                 if (args.Length == 1 && args[0] == "--verify-package") return 0;
+                if (args.Length == 2 && args[0] == "--verify-exe") return ValidateExecutable(args[1]) ? 0 : 2;
                 Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
                 string folder = args.Length == 2 && args[0] == "--folder" ? args[1] : "";
                 using (var form = new SetupForm(folder)) Application.Run(form);
@@ -63,8 +92,8 @@ namespace SnowRunnerCC.Setup
             using (var stream = new MemoryStream(Program.Resource("app.ico")))
             using (var icon = new Icon(stream)) Icon = (Icon)icon.Clone();
             var title = new Label { Text = "SnowRunner Cruise control", Font = new Font(Font.FontFamily, 19, FontStyle.Bold), AutoSize = true, Location = new Point(22, 18) };
-            var description = new Label { Text = T("Native HUD " + BuildInfo.Version + " · Windows x64 · two reviewed EXE builds\nInstall outside the game. Afterwards the HUD loads with SnowRunner.",
-                "Нативный HUD " + BuildInfo.Version + " · Windows x64 · две проверенные сборки EXE\nУстановка вне игры. После неё HUD загружается вместе со SnowRunner."), Location = new Point(24, 62), Size = new Size(645, 54) };
+            var description = new Label { Text = T("Native HUD " + BuildInfo.Version + " · Windows x64 · signature checks (test)\nInstall outside the game. Afterwards the HUD loads with SnowRunner.",
+                "Нативный HUD " + BuildInfo.Version + " · Windows x64 · проверка сигнатур (тест)\nУстановка вне игры. После неё HUD загружается вместе со SnowRunner."), Location = new Point(24, 62), Size = new Size(645, 54) };
             var hint = new Label { Text = T("Game folder (or the folder containing SnowRunner.exe):", "Папка игры или папка с SnowRunner.exe:"), Location = new Point(24, 130), AutoSize = true };
             folder.SetBounds(24, 158, 532, 29); folder.Text = String.IsNullOrEmpty(initialFolder) ? DetectGame() : initialFolder;
             browse.Text = T("Browse…", "Обзор…"); browse.SetBounds(565, 157, 100, 30);
@@ -88,7 +117,7 @@ namespace SnowRunnerCC.Setup
             worker.DoWork += delegate(object sender, DoWorkEventArgs e)
             {
                 var request = (string[])e.Argument;
-                var service = new Installer(Program.BundledPackage(), Installer.GameRunning, delegate(string message) { worker.ReportProgress(0, message); });
+                var service = new Installer(Program.BundledPackage(), Installer.GameRunning, delegate(string message) { worker.ReportProgress(0, message); }, Program.ValidateExecutable);
                 if (request[1] == "remove") service.Uninstall(request[0]); else service.Install(request[0]);
             };
             worker.ProgressChanged += delegate(object sender, ProgressChangedEventArgs e) { log.AppendText((string)e.UserState + Environment.NewLine); };

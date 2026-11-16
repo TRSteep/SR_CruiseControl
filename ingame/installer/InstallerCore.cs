@@ -15,8 +15,6 @@ namespace SnowRunnerCC.Setup
         internal const string Loader = "dinput8.dll";
         internal const string Receipt = "SnowRunnerCC.install.json";
         internal string Version;
-        internal readonly List<string> SupportedExeHashes = new List<string>();
-        internal bool Supports(string hash) { return SupportedExeHashes.Contains(hash); }
         internal readonly Dictionary<string, byte[]> Files = new Dictionary<string, byte[]>();
         internal readonly Dictionary<string, string> Hashes = new Dictionary<string, string>();
         internal static string Hash(byte[] bytes)
@@ -42,10 +40,11 @@ namespace SnowRunnerCC.Setup
         private readonly Package package;
         private readonly Func<bool> gameRunning;
         private readonly Action<string> notify;
+        private readonly Func<string, bool> validateExecutable;
         // Used by tests to simulate an interrupted installation.
         internal Action<string> AfterWrite { get; set; }
-        internal Installer(Package value, Func<bool> busy, Action<string> progress)
-        { package = value; gameRunning = busy; notify = progress ?? delegate { }; }
+        internal Installer(Package value, Func<bool> busy, Action<string> progress, Func<string, bool> validate)
+        { package = value; gameRunning = busy; notify = progress ?? delegate { }; validateExecutable = validate; }
 
         internal static string ResolveGameBin(string input)
         {
@@ -83,9 +82,11 @@ namespace SnowRunnerCC.Setup
         {
             RequireClosed(); package.Verify();
             string bin = ResolveGameBin(folder);
-            notify("Checking SnowRunner.exe SHA256...");
-            if (!package.Supports(Package.FileHash(Path.Combine(bin, "SnowRunner.exe"))))
-                throw new InvalidOperationException("Unsupported SnowRunner.exe. This HUD build supports two reviewed executable hashes. Run SnowRunnerCC-Compatibility.exe and send its report for a new build. No game files were changed.");
+            string executable = Path.Combine(bin, "SnowRunner.exe");
+            notify("SnowRunner.exe SHA256 (diagnostic only): " + Package.FileHash(executable));
+            notify("Checking function signatures and PE/vtable structure...");
+            if (validateExecutable == null || !validateExecutable(executable))
+                throw new InvalidOperationException("Missing/ambiguous signatures or invalid EXE structure. No game files were changed. Run SnowRunnerCC-Compatibility.exe and send its report.");
             string loader = Path.Combine(bin, Package.Loader);
             if (File.Exists(loader) && Package.FileHash(loader) != package.Hashes[Package.Loader])
                 throw new InvalidOperationException("An unrecognised dinput8.dll is already installed. It was preserved. Use the manual installation instructions with your existing compatible x64 ASI loader.");

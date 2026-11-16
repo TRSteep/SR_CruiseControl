@@ -32,8 +32,7 @@ int main() {
     check(srcompat::reviewedBuild("13ea28ab4b7e85770bcee97d35d50156516d3d3248f2428b27a5bbe512d831d0"));
     check(!srcompat::reviewedBuild(std::string(64,'0')));
     check(!srcompat::reviewedBuild(""));
-    for(bool reviewed:{false,true})for(bool experimental:{false,true})for(bool candidates:{false,true})
-        check(srcompat::allowHooks(reviewed,experimental,candidates)==(candidates&&(reviewed||experimental)));
+    for(bool candidates:{false,true}) check(srcompat::allowHooks(candidates)==candidates);
     check(!srcompat::stagePolicy(-1,true).valid&&!srcompat::stagePolicy(3,true).valid);
     auto stage=srcompat::stagePolicy(0,true);check(stage.valid&&!stage.hud&&!stage.frames&&!stage.input);
     stage=srcompat::stagePolicy(1,true);check(stage.valid&&stage.hud&&stage.frames&&!stage.input);

@@ -338,16 +338,12 @@ DWORD WINAPI run(void*) {
         auto bytes=srcompat::readExecutable(exe);const auto diskHash=srcompat::sha256(bytes);
         const auto file=srcompat::Image::parse(std::move(bytes));resolved=srcompat::resolve(file);
         std::fprintf(log,"Signature resolver: candidates=%u hash=%s\n",resolved.candidate(),diskHash.c_str());
-        constexpr bool allowUnreviewed=
-#ifdef SR_CC_ALLOW_UNREVIEWED
-            true;
-#else
-            false;
-#endif
         std::fprintf(log,"StartupPhase=scan-report (scanner only; configured hooks follow)\n");
         srcompat::writeReport(log,file,resolved,diskHash);
-        if(!srcompat::allowHooks(srcompat::reviewedBuild(diskHash),allowUnreviewed,resolved.candidate())){std::fprintf(log,"Missing/ambiguous signatures or unreviewed ABI. No hooks installed.\n");std::fclose(log);return 1;}
-        std::fprintf(log,"StartupPhase=validate-loaded-image reviewed=%u allowUnreviewed=%u\n",srcompat::reviewedBuild(diskHash),allowUnreviewed);std::fflush(log);
+        if(!srcompat::allowHooks(resolved.candidate())){std::fprintf(log,"Missing/ambiguous signatures. No hooks installed.\n");std::fclose(log);return 1;}
+        std::fprintf(log,"StartupPhase=validate-loaded-image reviewed=%u hashAllowlist=OFF\n",srcompat::reviewedBuild(diskHash));
+        if(!srcompat::reviewedBuild(diskHash))std::fprintf(log,"WARNING: unreviewed ABI; experimental compatibility run.\n");
+        std::fflush(log);
         if(!hashExe(hash)||diskHash!=hash||!bindResolvedUi(image,resolved)){std::fprintf(log,"Signature/loaded-image validation failed. No hooks installed.\n");std::fclose(log);return 1;}
     }catch(const std::exception& error){std::fprintf(log,"Resolver error: %s. No hooks installed.\n",error.what());std::fclose(log);return 1;}
 #else

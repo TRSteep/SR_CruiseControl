@@ -13,17 +13,17 @@ If W is already held, press F6 and then release W: cruise takes over and keeps t
 ## Compatibility
 
 - Windows x64, .NET Framework 4.x for the installer.
-- Supported executables: **Epic Games / SnowRunner 44.1** and a second user-tested EXE (store unconfirmed). Both SHA256 hashes are listed in INSTALL_NATIVE.md. The installer and plugin share this reviewed list; the plugin resolves functions by signatures and validates loaded code. General Steam/Game Pass compatibility is not claimed.
+- **Experimental compatibility release:** no EXE hash allowlist. The installer checks ten function signatures and x64 PE/vtable structure using its embedded scanner. The plugin repeats the scan and verifies loaded code. Unknown hashes are logged and allowed when structural checks pass. This does not prove ABI compatibility: untested builds may crash. General Steam/Game Pass compatibility is not claimed.
 - Use physical W for throttle and S for brake. Gamepad/wheel input and switching the engine off with a mouse are not tracked.
 - Changing focus or pressing Esc/Enter/M/F1/F4 cancels throttle. Returning to the game does not re-enable it.
 
-Version 1.2.0 adds signature-based function resolution and support for the second user-tested EXE. It preserves HUD visibility synchronisation, verified in-game by the user: hiding the game HUD hides the entire cruise row, icon and F-key hint; showing the HUD restores them without changing throttle state.
+Version 1.2.1 removes EXE hash blocking in both the installer and HUD while retaining structural and loaded-code validation. It preserves HUD visibility synchronisation, verified in-game by the user: hiding the game HUD hides the entire cruise row, icon and F-key hint; showing the HUD restores them without changing throttle state.
 
 ## Installation
 
 1. Close SnowRunner.
-2. Download and extract `SnowRunnerCC-HUD-1.2.0-Setup.zip` from this page's manual files, if available, or obtain the published installer from GitHub Releases.
-3. Run `SnowRunnerCC-HUD-1.2.0-Setup.exe` and select the game root or the folder containing `SnowRunner.exe`.
+2. Download and extract `SnowRunnerCC-HUD-1.2.1-Setup.zip` from this page's manual files, if available, or obtain the published installer from GitHub Releases.
+3. Run `SnowRunnerCC-HUD-1.2.1-Setup.exe` and select the game root or the folder containing `SnowRunner.exe`.
 4. Click **Install / update**. Administrator access is requested only if the selected directory requires it.
 5. Launch SnowRunner normally. No separate launcher is needed afterwards.
 
@@ -33,9 +33,9 @@ The installer preserves your INI, backs up replaced files, disables the previous
 
 Run the installer again to update. Your INI is preserved. **Remove HUD** removes only the installed ASI after verifying its hash; INI, the shared loader and backups remain. Previous overlay/test versions stay disabled. The installer is a portable setup tool and does not add an entry to Windows Installed Apps.
 
-Version: **HUD 1.2.0**. The installer is unsigned. Installation/update/removal/rollback and payload checks are automated; a full interactive installer run on every supported Windows configuration is not claimed.
+Version: **HUD 1.2.1**. The installer is unsigned. Installation/update/removal/rollback and payload checks are automated; a full interactive installer run on every supported Windows configuration is not claimed.
 
-[Source code](https://github.com/TRSteep/SR_CruiseControl) · [HUD 1.2.0 release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.2.0)
+[Source code](https://github.com/TRSteep/SR_CruiseControl) · [HUD 1.2.1 release](https://github.com/TRSteep/SR_CruiseControl/releases/tag/ingame-v1.2.1)
 
 Report issues with the game store/build, HUD version and `SnowRunnerNativeAutopilot.log`. Do not include account tokens or save files.
 

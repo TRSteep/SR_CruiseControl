@@ -37,7 +37,7 @@ Opt-in experimental HUD:
 .\ingame\experimental\scaleform\build.ps1 -Autopilot -ResolveSignatures -Package
 ```
 
-This builds into a **separate** `ingame/build/compatibility/native-hud` directory. It resolves all ten functions from signatures and checks their loaded bytes and the Movie vtable before binding the API. Both reviewed hashes listed in `ReviewedBuilds.inc` can run this HUD. Unknown hashes produce a diagnostic report and return **before hooks are installed**, even if all structural checks succeed. The normal HUD 1.2.0 build also uses this resolver and the same two-hash reviewed list as its installer. The second EXE was live-tested by the user; its storefront remains unconfirmed. The separate `-AllowUnreviewed` build explicitly disables this allowlist for staged testing, described below.
+This builds into a **separate** `ingame/build/compatibility/native-hud` directory. Like normal HUD 1.2.1 it resolves ten functions from signatures and verifies loaded bytes and the Movie vtable before hooks. There is no hash allowlist: known hashes identify prior testing only. Unknown builds are allowed after structural checks, with an unreviewed-ABI warning. This is experimental compatibility, not proof of ABI safety. The normal installer embeds this read-only scanner and requires a successful structural scan before changing game files. `-AllowUnreviewed` retains separate names and staged observation/control for debugging.
 
 The scanner validates x64 PE section bounds and exception entries, searches executable sections, rejects missing or ambiguous entries, verifies a factory string reference and the Movie destructor/Advance vtable relationship (slots 0/24). Generic deleting destructors are disambiguated by that unique vtable. It does not select the first byte match. Changing RVAs, relative calls and RIP displacements is modelled by tests; malformed/truncated images and duplicate candidates are rejected.
 
@@ -45,11 +45,11 @@ The scanner validates x64 PE section bounds and exception entries, searches exec
 
 ## Next step
 
-Review Steam reports, refine the discovery rules if needed, then validate call signatures, object layouts and reference lifetimes with a separate UI observer build. After a successful live HUD/control test, add a reviewed Steam ABI profile and update the installer. Structural matching alone cannot establish a new build's ABI, and the production installer must not simply accept every file with matching bytes.
+Review Steam reports, refine the discovery rules if needed, then validate call signatures, object layouts and reference lifetimes with a separate UI observer build. After a successful live HUD/control test, add a reviewed Steam ABI profile and update the installer. Structural matching alone cannot establish a new build's ABI, rather than treating structural matches as ABI certification.
 
-HUD 1.2.0 is a full release for the two reviewed EXEs. It does not claim universal Steam compatibility. These build commands do not replace any installed game files.
+HUD 1.2.1 is an experimental compatibility release without an EXE hash allowlist. It does not claim universal Steam compatibility. These build commands do not replace any installed game files.
 
-Local validation: all ten reviewed Epic functions and structural links were resolved; 53 scanner/policy/profile tests and 7 private-image binding checks passed. The existing HUD tests also passed. The installed game EXE and HUD ASI hashes remained unchanged. The diagnostic import audit found no keyboard-input, process-write or hook-installation imports; MinGW CRT can still import VirtualProtect for its own runtime startup.
+Local validation: all ten reviewed Epic functions and structural links were resolved; 47 scanner/policy/profile tests and 7 private-image binding checks passed. The existing HUD tests also passed. The installed game EXE and HUD ASI hashes remained unchanged. The diagnostic import audit found no keyboard-input, process-write or hook-installation imports; MinGW CRT can still import VirtualProtect for its own runtime startup.
 
 ## Explicit unreviewed-build experiment
 
