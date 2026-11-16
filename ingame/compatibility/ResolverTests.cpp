@@ -1,5 +1,6 @@
 #include "SignatureResolver.h"
 #include "ExperimentalPolicy.h"
+#include "ReviewedBuilds.h"
 #include <cstdio>
 #include <cstdlib>
 
@@ -27,6 +28,10 @@ std::vector<uint8_t> fixture(unsigned shift=0) {
 void reject(const std::vector<uint8_t>& bytes){bool failed=false;try{srcompat::Image::parse(bytes);}catch(const std::runtime_error&){failed=true;}check(failed);}
 }
 int main() {
+    check(srcompat::reviewedBuild("a3cb442ec138eb2eb7e335e5c80e376766550740e49e233ac9eace035e182285"));
+    check(srcompat::reviewedBuild("13ea28ab4b7e85770bcee97d35d50156516d3d3248f2428b27a5bbe512d831d0"));
+    check(!srcompat::reviewedBuild(std::string(64,'0')));
+    check(!srcompat::reviewedBuild(""));
     for(bool reviewed:{false,true})for(bool experimental:{false,true})for(bool candidates:{false,true})
         check(srcompat::allowHooks(reviewed,experimental,candidates)==(candidates&&(reviewed||experimental)));
     check(!srcompat::stagePolicy(-1,true).valid&&!srcompat::stagePolicy(3,true).valid);

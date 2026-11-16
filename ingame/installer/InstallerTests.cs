@@ -12,7 +12,8 @@ namespace SnowRunnerCC.Setup
         private static byte[] Bytes(string s) { return Encoding.UTF8.GetBytes(s); }
         private static Package Fixture()
         {
-            var p = new Package { Version = "1.1.3", SupportedExe = Package.Hash(Bytes("supported game")) };
+            var p = new Package { Version = "1.2.0" };
+            p.SupportedExeHashes.Add(Package.Hash(Bytes("supported game")));
             foreach (string name in new string[] { Package.Asi, Package.Ini, Package.Loader })
             { p.Files[name] = Bytes("new " + name); p.Hashes[name] = Package.Hash(p.Files[name]); }
             return p;
@@ -46,11 +47,15 @@ namespace SnowRunnerCC.Setup
             File.WriteAllText(Path.Combine(bin, Package.Asi), "old ASI");
             File.WriteAllText(Path.Combine(bin, "SnowRunnerAutopilot.asi"), "overlay");
             File.WriteAllText(Path.Combine(bin, "SnowRunnerScaleformProbe.asi"), "probe");
+            File.WriteAllText(Path.Combine(bin, "SnowRunnerCCExperimental.asi"), "experimental");
+            File.WriteAllText(Path.Combine(bin, "SnowRunnerCCCompatibility.asi"), "diagnostic");
             backup = Service(package).Install(bin);
             Check(File.ReadAllText(Path.Combine(bin, Package.Ini)) == "custom key F7");
             Check(File.ReadAllText(Path.Combine(backup, Package.Asi)) == "old ASI");
             Check(!File.Exists(Path.Combine(bin, "SnowRunnerAutopilot.asi")) && !File.Exists(Path.Combine(bin, "SnowRunnerScaleformProbe.asi")));
             Check(Directory.GetFiles(bin, "SnowRunnerAutopilot.asi.disabled.cc-*").Length == 1);
+            Check(!File.Exists(Path.Combine(bin, "SnowRunnerCCExperimental.asi")));
+            Check(!File.Exists(Path.Combine(bin, "SnowRunnerCCCompatibility.asi")));
             Service(package).Uninstall(bin);
             Check(!File.Exists(Path.Combine(bin, Package.Asi)));
             Check(File.Exists(Path.Combine(bin, Package.Loader)) && File.ReadAllText(Path.Combine(bin, Package.Ini)) == "custom key F7");
@@ -70,10 +75,12 @@ namespace SnowRunnerCC.Setup
                 Check(!Directory.Exists(Path.Combine(bin, "SnowRunnerCC_Backups")));
                 if (scenario == "unknown-loader") Check(File.ReadAllText(Path.Combine(bin, Package.Loader)) == "another mod's loader");
             }
-            foreach (string failurePoint in new string[] { Package.Asi, Package.Ini, Package.Loader, "SnowRunnerAutopilot.asi", Package.Receipt })
+            foreach (string failurePoint in new string[] { Package.Asi, Package.Ini, Package.Loader, "SnowRunnerAutopilot.asi", "SnowRunnerCCExperimental.asi", "SnowRunnerCCCompatibility.asi", Package.Receipt })
             {
                 bin = Game("rollback-" + failurePoint); File.WriteAllText(Path.Combine(bin, Package.Asi), "previous ASI");
                 File.WriteAllText(Path.Combine(bin, "SnowRunnerAutopilot.asi"), "previous overlay");
+                File.WriteAllText(Path.Combine(bin, "SnowRunnerCCExperimental.asi"), "previous experimental");
+                File.WriteAllText(Path.Combine(bin, "SnowRunnerCCCompatibility.asi"), "previous diagnostic");
                 File.WriteAllText(Path.Combine(bin, Package.Receipt), "previous receipt");
                 Installer service = Service(package);
                 service.AfterWrite = delegate(string name) { if (name == failurePoint) throw new IOException("Simulated interruption"); };
@@ -81,10 +88,20 @@ namespace SnowRunnerCC.Setup
                 Check(File.ReadAllText(Path.Combine(bin, Package.Asi)) == "previous ASI");
                 Check(File.ReadAllText(Path.Combine(bin, "SnowRunnerAutopilot.asi")) == "previous overlay");
                 Check(File.ReadAllText(Path.Combine(bin, Package.Receipt)) == "previous receipt");
+                Check(File.ReadAllText(Path.Combine(bin, "SnowRunnerCCExperimental.asi")) == "previous experimental");
+                Check(File.ReadAllText(Path.Combine(bin, "SnowRunnerCCCompatibility.asi")) == "previous diagnostic");
                 Check(!File.Exists(Path.Combine(bin, Package.Ini)) && !File.Exists(Path.Combine(bin, Package.Loader)));
                 Check(Directory.GetFiles(bin, "*.tmp").Length == 0);
                 Check(Directory.GetFiles(bin, "*.disabled.cc-*").Length == 0);
             }
+            bin = Game("second-reviewed-build");
+            File.WriteAllBytes(Path.Combine(bin, "SnowRunner.exe"), Bytes("second reviewed game"));
+            package.SupportedExeHashes.Add(Package.Hash(Bytes("second reviewed game")));
+            Service(package).Install(bin);
+            Check(File.Exists(Path.Combine(bin, Package.Asi)));
+            Service(package).Uninstall(bin);
+            Check(!File.Exists(Path.Combine(bin, Package.Asi)));
+            Check(!package.Supports(Package.Hash(Bytes("unreviewed game"))));
             // Removal must still work after the game itself updates.
             bin = Game("game-updated"); Service(package).Install(bin);
             File.WriteAllText(Path.Combine(bin, "SnowRunner.exe"), "new game version");

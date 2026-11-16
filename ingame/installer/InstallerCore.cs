@@ -14,7 +14,9 @@ namespace SnowRunnerCC.Setup
         internal const string Ini = "SnowRunnerNativeAutopilot.ini";
         internal const string Loader = "dinput8.dll";
         internal const string Receipt = "SnowRunnerCC.install.json";
-        internal string Version, SupportedExe;
+        internal string Version;
+        internal readonly List<string> SupportedExeHashes = new List<string>();
+        internal bool Supports(string hash) { return SupportedExeHashes.Contains(hash); }
         internal readonly Dictionary<string, byte[]> Files = new Dictionary<string, byte[]>();
         internal readonly Dictionary<string, string> Hashes = new Dictionary<string, string>();
         internal static string Hash(byte[] bytes)
@@ -82,8 +84,8 @@ namespace SnowRunnerCC.Setup
             RequireClosed(); package.Verify();
             string bin = ResolveGameBin(folder);
             notify("Checking SnowRunner.exe SHA256...");
-            if (Package.FileHash(Path.Combine(bin, "SnowRunner.exe")) != package.SupportedExe)
-                throw new InvalidOperationException("Unsupported SnowRunner.exe. This HUD build supports the tested Epic Games 44.1 executable only. No game files were changed.");
+            if (!package.Supports(Package.FileHash(Path.Combine(bin, "SnowRunner.exe"))))
+                throw new InvalidOperationException("Unsupported SnowRunner.exe. This HUD build supports two reviewed executable hashes. Run SnowRunnerCC-Compatibility.exe and send its report for a new build. No game files were changed.");
             string loader = Path.Combine(bin, Package.Loader);
             if (File.Exists(loader) && Package.FileHash(loader) != package.Hashes[Package.Loader])
                 throw new InvalidOperationException("An unrecognised dinput8.dll is already installed. It was preserved. Use the manual installation instructions with your existing compatible x64 ASI loader.");
@@ -91,7 +93,7 @@ namespace SnowRunnerCC.Setup
             string id = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N");
             string backup = Path.Combine(bin, "SnowRunnerCC_Backups", id);
             Directory.CreateDirectory(backup);
-            string[] names = { Package.Asi, Package.Ini, Package.Loader, Package.Receipt, "SnowRunnerAutopilot.asi", "SnowRunnerScaleformProbe.asi" };
+            string[] names = { Package.Asi, Package.Ini, Package.Loader, Package.Receipt, "SnowRunnerAutopilot.asi", "SnowRunnerScaleformProbe.asi", "SnowRunnerCCExperimental.asi", "SnowRunnerCCCompatibility.asi" };
             var existed = new Dictionary<string, bool>();
             foreach (string name in names)
             {
@@ -112,7 +114,7 @@ namespace SnowRunnerCC.Setup
                     if (Package.FileHash(Path.Combine(bin, name)) != package.Hashes[name]) throw new IOException("Installed file checksum mismatch: " + name);
                     if (AfterWrite != null) AfterWrite(name);
                 }
-                foreach (string name in new string[] { "SnowRunnerAutopilot.asi", "SnowRunnerScaleformProbe.asi" })
+                foreach (string name in new string[] { "SnowRunnerAutopilot.asi", "SnowRunnerScaleformProbe.asi", "SnowRunnerCCExperimental.asi", "SnowRunnerCCCompatibility.asi" })
                     if (existed[name])
                     {
                         File.Move(Path.Combine(bin, name), Path.Combine(bin, name + ".disabled.cc-" + id));

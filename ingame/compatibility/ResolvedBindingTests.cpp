@@ -4,7 +4,7 @@
 int wmain(int argc,wchar_t** argv) {
     if(argc!=2)return 1;
     auto bytes=srcompat::readExecutable(argv[1]);
-    if(srcompat::sha256(bytes)!=srcompat::reviewedHash){std::fprintf(stderr,"Binding test requires reviewed Epic EXE.\n");return 1;}
+    if(!srcompat::reviewedBuild(srcompat::sha256(bytes))){std::fprintf(stderr,"Binding test requires a reviewed EXE.\n");return 1;}
     const auto file=srcompat::Image::parse(std::move(bytes));const auto resolution=srcompat::resolve(file);
     if(!resolution.candidate())return 1;
     // Private, non-executable copy. Never attach to or change the game.

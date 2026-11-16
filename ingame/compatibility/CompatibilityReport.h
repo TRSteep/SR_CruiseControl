@@ -4,6 +4,7 @@
 #include <bcrypt.h>
 #include <cstdio>
 #include "SignatureResolver.h"
+#include "ReviewedBuilds.h"
 
 namespace srcompat {
 inline std::vector<uint8_t> readExecutable(const wchar_t* path) {
@@ -36,7 +37,7 @@ inline void writeReport(FILE* log,const Image& image,const Resolution& result,co
     std::fprintf(log,"SnowRunner CC compatibility diagnostic 1.0 / signature revision 1\n");
     std::fprintf(log,"Mode=READ_ONLY; hooks=NONE; AS3 calls=NONE; keyboard input=NONE\n");
     std::fprintf(log,"SHA256=%s\nFileBytes=%zu ImageSize=%u PETimestamp=%u\n",hash.c_str(),image.bytes.size(),image.size,image.timestamp);
-    std::fprintf(log,"ReviewedBuild=%s\n",hash==reviewedHash?"Epic-44.1":"UNKNOWN (Steam/build/store cannot be inferred from candidates)");
+    std::fprintf(log,"ReviewedBuild=%s\n",reviewedProfile(hash)?reviewedProfile(hash):"UNKNOWN (Steam/build/store cannot be inferred from candidates)");
     for(const auto& symbol:symbols) {
         const auto& match=result.matches.at(symbol.name);
         std::fprintf(log,"Symbol=%s PatternMatches=%u Matches=%zu RejectedFunctionEntries=%u",symbol.name,match.rawMatches,match.rvas.size(),match.rejectedEntries);

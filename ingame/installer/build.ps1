@@ -21,6 +21,10 @@ if((Get-FileHash -LiteralPath $files['dinput8.dll']).Hash -ne '57EC56390C92A18B8
 $hashes=@{}
 foreach($entry in $files.GetEnumerator()){$hashes[$entry.Key]=(Get-FileHash -LiteralPath $entry.Value).Hash.ToLowerInvariant()}
 $entries=@($hashes.GetEnumerator()|ForEach-Object{'{ "'+$_.Key+'", "'+$_.Value+'" }'}) -join ",`r`n"
+$profiles=[regex]::Matches([IO.File]::ReadAllText((Join-Path $root 'compatibility\ReviewedBuilds.inc')),'SR_CC_REVIEWED\("([0-9a-f]{64})", "([^"]+)"\)')
+$reviewedHashes=@($profiles | ForEach-Object {$_.Groups[1].Value})
+if($reviewedHashes.Count -lt 1 -or @($reviewedHashes | Select-Object -Unique).Count -ne $reviewedHashes.Count){throw 'Invalid reviewed executable profiles.'}
+$hashLiterals=($reviewedHashes | ForEach-Object {'"'+$_+'"'}) -join ','
 $metadata=@"
 using System.Collections.Generic;
 using System.Reflection;
@@ -31,7 +35,7 @@ using System.Reflection;
 namespace SnowRunnerCC.Setup {
 internal static class BuildInfo {
 internal const string Version="$version";
-internal const string SupportedExe="a3cb442ec138eb2eb7e335e5c80e376766550740e49e233ac9eace035e182285";
+internal static readonly string[] SupportedExeHashes=new string[] { $hashLiterals };
 internal static readonly Dictionary<string,string> Hashes=new Dictionary<string,string> { $entries };
 }}
 "@
@@ -57,6 +61,7 @@ if($LASTEXITCODE -ne 0){throw 'Installer compilation failed.'}
 $smoke=Start-Process -FilePath $exe -ArgumentList '--verify-package' -WindowStyle Hidden -Wait -PassThru
 if($smoke.ExitCode -ne 0){throw 'Embedded payload verification failed.'}
 $info=@{product='SnowRunner Cruise control';shortName='SnowRunner CC';variant='HUD';version=$version;sourceCommit=(git -C $repo rev-parse HEAD).Trim();sourceTreeDirty=[bool](git -C $repo status --porcelain);payloadSha256=$hashes;installerSha256=(Get-FileHash -LiteralPath $exe).Hash.ToLowerInvariant()}
+$info.reviewedExeSha256=$reviewedHashes
 [IO.File]::WriteAllText((Join-Path $out 'BUILD_INFO.json'),($info|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
 Copy-Item -LiteralPath (Join-Path $root 'INSTALL_NATIVE.md'),(Join-Path $root 'MODIO_DESCRIPTION_EN.md') -Destination $out
 $licenses=Join-Path $out 'licenses'

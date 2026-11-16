@@ -28,7 +28,7 @@ try {
     }
     $flags = @('-std=c++17','-O2','-Wall','-Wextra','-Werror','-static','-pthread',"-I$minhook\include", "-I$out")
     if($Autopilot){$flags+='-DSCALEFORM_NATIVE_AUTOPILOT'}
-    if($ResolveSignatures){$flags+='-DSR_CC_SIGNATURE_RESOLVER'}
+    if($Autopilot){$flags+='-DSR_CC_SIGNATURE_RESOLVER'}
     if($AllowUnreviewed){$flags+='-DSR_CC_ALLOW_UNREVIEWED'}
     & "$Toolchain\g++.exe" @flags (Join-Path $root 'ProbeTests.cpp') $objects -lbcrypt -o (Join-Path $out 'ProbeTests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Probe test compilation failed.' }
@@ -60,7 +60,7 @@ try {
     if($AllowUnreviewed){$binary='SnowRunnerCCExperimental.asi'}
     & "$Toolchain\g++.exe" @flags -shared '-Wl,--exclude-all-symbols' (Join-Path $root 'Probe.cpp') $objects -lbcrypt -o (Join-Path $out $binary)
     if ($LASTEXITCODE -ne 0) { throw 'Probe compilation failed.' }
-    if($ResolveSignatures -and $ReferenceExe) {
+    if($Autopilot -and $ReferenceExe) {
         & "$Toolchain\g++.exe" @flags -municode (Join-Path $root '..\..\compatibility\ResolvedBindingTests.cpp') $objects -lbcrypt -o (Join-Path $out 'ResolvedBindingTests.exe')
         if($LASTEXITCODE -ne 0){throw 'Resolved binding test compilation failed.'}
         & (Join-Path $out 'ResolvedBindingTests.exe') $ReferenceExe

@@ -26,7 +26,8 @@ namespace SnowRunnerCC.Setup
         }
         internal static Package BundledPackage()
         {
-            var package = new Package { Version = BuildInfo.Version, SupportedExe = BuildInfo.SupportedExe };
+            var package = new Package { Version = BuildInfo.Version };
+            package.SupportedExeHashes.AddRange(BuildInfo.SupportedExeHashes);
             foreach (string name in new string[] { Package.Asi, Package.Ini, Package.Loader })
             { package.Files[name] = Resource(name); package.Hashes[name] = BuildInfo.Hashes[name]; }
             package.Verify(); return package;
@@ -62,8 +63,8 @@ namespace SnowRunnerCC.Setup
             using (var stream = new MemoryStream(Program.Resource("app.ico")))
             using (var icon = new Icon(stream)) Icon = (Icon)icon.Clone();
             var title = new Label { Text = "SnowRunner Cruise control", Font = new Font(Font.FontFamily, 19, FontStyle.Bold), AutoSize = true, Location = new Point(22, 18) };
-            var description = new Label { Text = T("Native HUD " + BuildInfo.Version + " · Windows x64 · Epic Games / SnowRunner 44.1\nInstall outside the game. Afterwards the HUD loads with SnowRunner.",
-                "Нативный HUD " + BuildInfo.Version + " · Windows x64 · Epic Games / SnowRunner 44.1\nУстановка вне игры. После неё HUD загружается вместе со SnowRunner."), Location = new Point(24, 62), Size = new Size(645, 54) };
+            var description = new Label { Text = T("Native HUD " + BuildInfo.Version + " · Windows x64 · two reviewed EXE builds\nInstall outside the game. Afterwards the HUD loads with SnowRunner.",
+                "Нативный HUD " + BuildInfo.Version + " · Windows x64 · две проверенные сборки EXE\nУстановка вне игры. После неё HUD загружается вместе со SnowRunner."), Location = new Point(24, 62), Size = new Size(645, 54) };
             var hint = new Label { Text = T("Game folder (or the folder containing SnowRunner.exe):", "Папка игры или папка с SnowRunner.exe:"), Location = new Point(24, 130), AutoSize = true };
             folder.SetBounds(24, 158, 532, 29); folder.Text = String.IsNullOrEmpty(initialFolder) ? DetectGame() : initialFolder;
             browse.Text = T("Browse…", "Обзор…"); browse.SetBounds(565, 157, 100, 30);
